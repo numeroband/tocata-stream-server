@@ -22,7 +22,7 @@ public:
     ~Session();
     void connect(const std::string& username, const std::string& password);
     void sendSamples(const AudioInfo& info, float* samples[], size_t num_samples);
-    void receiveSamples(const std::string& peer, const AudioInfo& info, float* samples[], size_t num_samples);
+    bool receiveSamples(const std::string& peer, const AudioInfo& info, float* samples[], size_t num_samples);
 
 private:
     struct Impl;

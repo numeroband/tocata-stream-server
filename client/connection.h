@@ -40,7 +40,7 @@ public:
   void setSendCandidatesCb(SendCandidatesCb cb) { _sendCandidatesCb = cb; }
   void setConnectedCb(ConnectedCb cb) { _connectedCb = cb; }
   void send(const void* data, size_t length);
-  void receive(const AudioInfo& info, float* samples[], size_t num_samples);
+  bool receive(const AudioInfo& info, float* samples[], size_t num_samples);
 
 private:
   enum MessageType : uint32_t {
@@ -76,6 +76,7 @@ private:
   static constexpr size_t kMaxQueueSize = 3 * kFrameSize;
   static constexpr size_t kMaxEncodedFrame = 512;
   static constexpr float kSamplePeriod = (1000 * 1000 * 1000) / kSampleRate;
+  static constexpr int64_t kInvalidOffset = INT64_MAX;
 
   void onStateChanged(juice_state_t state);
   void onCandidate(const char *sdp);
@@ -97,7 +98,7 @@ private:
   std::chrono::steady_clock::time_point _pingSent;
   std::chrono::nanoseconds _delay;
   SamplesQueue _samples{kMaxQueueSize, kNumChannels, kSampleRate};
-  int64_t _timestamp_offset;
+  int64_t _timestamp_offset = kInvalidOffset;
 };
 
 }

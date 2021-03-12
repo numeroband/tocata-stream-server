@@ -139,6 +139,15 @@ void Connection::onAudio(const void *data, size_t size) {
 
   std::vector<float> samples = _decoder.Decode(msg.bytes, msg.size, kFrameSize);
   std::lock_guard<std::mutex> lck(_mutex);
+  if (_timestamp_offset == kInvalidOffset) {
+    auto now = std::chrono::steady_clock::now().time_since_epoch();
+    uint64_t now_nanosecs = std::chrono::nanoseconds(now).count();
+    _timestamp_offset = msg.host_timestamp - now_nanosecs;
+    std::cout << "host " << now_nanosecs 
+      << " received " << now_nanosecs 
+      << " offset " << _timestamp_offset 
+      << std::endl;
+  }
   _samples.addSamples(samples.data(), samples.size(), msg.host_timestamp);
 }
 
@@ -160,10 +169,10 @@ std::vector<uint8_t> Connection::BuildAudioMessage(const Connection::AudioInfo& 
   return result;
 }
 
-void Connection::receive(const AudioInfo& info, float* samples[], size_t num_samples) {
+bool Connection::receive(const AudioInfo& info, float* samples[], size_t num_samples) {
   std::lock_guard<std::mutex> lck(_mutex);
   uint64_t timestamp = info.host_timestamp + _timestamp_offset;
-  _samples.readSamples(samples, num_samples, info.channels, info.host_timestamp + _timestamp_offset);
+  return _samples.readSamples(samples, num_samples, info.channels, info.host_timestamp + _timestamp_offset);
 }
 
 }

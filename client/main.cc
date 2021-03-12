@@ -57,22 +57,10 @@ int main(int argc, char* argv[]) try {
     return 0;
   }
 
-  tocata::Session::AudioInfo info{
-    0,
-    0,
-    kSampleRate,
-    0,
-    2,
-  };
-
   tocata::Session session{};
   std::thread thread{[&]{
     session.connect(username, "password");
   }};
-
-  // while(true) {
-  //   play(filename, session);
-  // }
 
   if (sending) {
     std::this_thread::sleep_for(std::chrono::seconds(2));
@@ -84,16 +72,26 @@ int main(int argc, char* argv[]) try {
 
   auto period = std::chrono::nanoseconds(kBufferSize * 1000 * 1000 * 1000 / kSampleRate);
   auto next = std::chrono::steady_clock::now();
-  size_t file_samples = 0;
-  while (mode == kModeEcho || file_samples < kMaxSamples) {
+  size_t total_samples = 0;
+  while (mode == kModeEcho || total_samples < kMaxSamples) {
     next += period;
     std::this_thread::sleep_until(std::chrono::steady_clock::time_point(next));
 
+    tocata::Session::AudioInfo info{
+      static_cast<int64_t>(total_samples),
+      static_cast<uint64_t>(std::chrono::nanoseconds(next.time_since_epoch()).count()),
+      kSampleRate,
+      0,
+      2,
+    };
     size_t received = kBufferSize;
-    if (receiving) {
-      session.receiveSamples(remote, info, samples, kBufferSize);
+    if (receiving) {      
+      bool valid = session.receiveSamples(remote, info, samples, kBufferSize);
+      if (total_samples == 0 && !valid) {
+        continue;
+      }
       if (mode != kModeEcho) {
-        assert(received == kBufferSize);
+        assert(valid);
       }
     }
     if (mode == kModeReceive) {
@@ -115,7 +113,7 @@ int main(int argc, char* argv[]) try {
     if (sending) {
       session.sendSamples(info, samples, received);
     }
-    file_samples += kBufferSize;
+    total_samples += kBufferSize;
   };
 
   std::cout << "All sent" << std::endl;

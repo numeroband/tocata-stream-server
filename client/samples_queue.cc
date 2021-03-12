@@ -1,6 +1,7 @@
 #include "samples_queue.h"
 
 #include <cstring>
+#include <algorithm>
 
 namespace tocata {
 
@@ -15,7 +16,8 @@ int64_t SamplesQueue::sampleIndex(uint64_t timestamp) {
   if (_timestamp == 0) {
     return 0;
   }
-  return static_cast<int64_t>(timestamp - _timestamp) / _sample_period;
+  // Add half period to go from -0.5 to 0.5 on each sample
+  return static_cast<int64_t>(timestamp + (_sample_period / 2) - _timestamp) / _sample_period;
 }
 
 void SamplesQueue::setHeadAndSize(size_t num_samples, uint64_t timestamp) {
@@ -74,25 +76,69 @@ size_t SamplesQueue::skipSamples(uint64_t timestamp) {
 }
 
 void SamplesQueue::addSamples(const float* interleaved, size_t num_samples, uint64_t timestamp) {
-    size_t skipped = skipSamples(timestamp);
-    num_samples -= skipped;
-    interleaved += skipped * _channels;
-    timestamp += skipped * _sample_period;
+  size_t skipped = skipSamples(timestamp);
+  num_samples -= skipped;
+  interleaved += skipped * _channels;
+  timestamp += skipped * _sample_period;
 
-    size_t wrap = beforeWrap();
-    if (num_samples > wrap) {
-      addSamplesWrapped(interleaved, wrap, timestamp);
-      num_samples -= wrap;
-      interleaved += wrap * _channels;
-      timestamp += wrap * _sample_period;
-    }
-    addSamplesWrapped(interleaved, num_samples, timestamp);
+  size_t wrap = beforeWrap();
+  if (num_samples > wrap) {
+    addSamplesWrapped(interleaved, wrap, timestamp);
+    num_samples -= wrap;
+    interleaved += wrap * _channels;
+    timestamp += wrap * _sample_period;
+  }
+  addSamplesWrapped(interleaved, num_samples, timestamp);
 }
 
-void SamplesQueue::readSamples(float* samples[], size_t num_samples, uint8_t num_channels, uint64_t timestamp) {
-    for (uint8_t channel = 0; channel < num_channels; ++channel) {
-      memset(samples[channel], 0, num_samples * sizeof(samples[channel][0]));
-    }
+void SamplesQueue::readNullSamples(float* samples[], size_t num_samples, uint8_t num_channels, size_t dst_index) {
+  for (uint8_t channel = 0; channel < num_channels; ++channel) {
+    memset(samples[channel] + dst_index, 0, num_samples * sizeof(samples[channel][0]));
+  }
+}
+
+void SamplesQueue::readSamples(float* samples[], size_t num_samples, uint8_t num_channels, size_t src_index, size_t dst_index) {
+  for (uint8_t channel = 0; channel < num_channels; ++channel) {
+    size_t start = (_head + src_index) % _max_size;
+    size_t wrap = _max_size - start;
+    // Copy channel 0 in any extra dst channels
+    uint8_t src_channel = (channel < _channels) ? channel : 0;
+    if (num_samples > wrap) {
+      memcpy(samples[channel] + dst_index, _samples[src_channel].data() + start, wrap * sizeof(_samples[0][0]));
+      num_samples -= wrap;
+      start = 0;
+      dst_index += wrap;
+    } 
+    memcpy(samples[channel] + dst_index, _samples[src_channel].data() + start, num_samples * sizeof(_samples[0][0]));
+  }
+}
+
+bool SamplesQueue::readSamples(float* samples[], size_t num_samples, uint8_t num_channels, uint64_t timestamp) {
+  bool valid = false;
+  size_t dst = 0;
+  int64_t start = sampleIndex(timestamp);
+  if (start < 0) {
+    size_t null_samples = std::min(static_cast<size_t>(-start), num_samples);
+    readNullSamples(samples, null_samples, num_channels, dst);
+    dst += null_samples;
+    num_samples -= null_samples;
+    start += null_samples;
+  }
+
+  if (num_samples > 0 && start < _size) {
+    size_t good_samples = std::min(static_cast<size_t>(_size - start), num_samples);
+    readSamples(samples, good_samples, num_channels, start, dst);
+    start += good_samples;
+    dst += good_samples;
+    num_samples -= good_samples;
+    valid = true;
+  }
+
+  if (num_samples > 0 && start >= _size) {
+    readNullSamples(samples, num_samples, num_channels, dst);
+  }
+
+  return valid;
 }
 
 }

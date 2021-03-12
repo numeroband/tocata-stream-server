@@ -26,7 +26,7 @@ namespace tocata {
 struct Session::Impl {
     void connect(const std::string& username, const std::string& password);
     void sendSamples(const AudioInfo& info, float* samples[], size_t num_samples);
-    void receiveSamples(const std::string& peer, const AudioInfo& info, float* samples[], size_t num_samples);
+    bool receiveSamples(const std::string& peer, const AudioInfo& info, float* samples[], size_t num_samples);
 
 #ifdef TOCATA_LOCAL
     typedef websocketpp::client<websocketpp::config::asio_client> ws_client;
@@ -97,8 +97,8 @@ void Session::sendSamples(const AudioInfo& info, float* samples[], size_t num_sa
   _pimpl->sendSamples(info, samples, num_samples);
 }
 
-void Session::receiveSamples(const std::string& peer, const AudioInfo& info, float* samples[], size_t num_samples) {
-  _pimpl->receiveSamples(peer, info, samples, num_samples);
+bool Session::receiveSamples(const std::string& peer, const AudioInfo& info, float* samples[], size_t num_samples) {
+  return _pimpl->receiveSamples(peer, info, samples, num_samples);
 }
 
 std::string Session::Impl::join(const std::string& username, const std::string& password) {
@@ -161,15 +161,16 @@ void Session::Impl::sendSamples(const AudioInfo& info, float* samples[], size_t 
   }
 }
 
-void Session::Impl::receiveSamples(const std::string& peer, const AudioInfo& info, float* samples[], size_t num_samples)
+bool Session::Impl::receiveSamples(const std::string& peer, const AudioInfo& info, float* samples[], size_t num_samples)
 {
   auto peer_iter = _connections.find(peer);
-  if (peer_iter == _connections.end()) {
+  if (peer_iter == _connections.end() || !peer_iter->second.connected()) {
     for (uint8_t channel = 0; channel < info.channels; ++channel) {
       memset(samples[channel], 0, num_samples * sizeof(samples[channel][0]));
     }
+    return false;
   }
-  peer_iter->second.receive(connAudioInfo(info), samples, num_samples);
+  return peer_iter->second.receive(connAudioInfo(info), samples, num_samples);
 }
 
 void Session::Impl::sendHello(websocketpp::connection_hdl hdl) {
