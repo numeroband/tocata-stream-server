@@ -5,6 +5,10 @@
 namespace tocata {
 
 Connection::Connection() {
+  for (int i = 0; i < kNumChannels; ++i) {
+
+  }
+
 	juice_config_t config;
 	memset(&config, 0, sizeof(config));
 
@@ -58,9 +62,13 @@ void Connection::close() {
 void Connection::onStateChanged(juice_state_t state) {
   std::cout << "New state " << juice_state_to_string(state) << std::endl;
 	if (state == JUICE_STATE_CONNECTED) {
-    _connected = true;
-    _connectedCb();
+    PingRequest request{kPingRequest};
+    send(&request, sizeof(request));
 	}
+
+	if (state == JUICE_STATE_DISCONNECTED) {
+    _connected = false;
+  }
 }
 
 void Connection::onCandidate(const char *sdp) {
@@ -71,14 +79,91 @@ void Connection::onGatheringDone() {
   _sendCandidatesCb(_candidates);
 }
 
-void Connection::onRecv(const char *data, size_t size) {
-  constexpr size_t BUFFER_SIZE = 128;
-	char buffer[BUFFER_SIZE];
-	if (size > BUFFER_SIZE - 1)
-		size = BUFFER_SIZE - 1;
-	memcpy(buffer, data, size);
-	buffer[size] = '\0';
-	std::cout << "Received: " << buffer << std::endl;
+void Connection::onRecv(const void *data, size_t size) {
+  const MessageHeader& header = *static_cast<const MessageHeader*>(data);
+  if (size < sizeof(header)) {
+    std::cerr << "Message smaller than header" << std::endl;
+    return;
+  }
+
+  if (header.seq != 0 && _lastSeq != 0 && header.seq != (_lastSeq + 1)) {
+    std::cerr << "Packet loss " << _lastSeq << "->" << header.seq << std::endl;
+  }
+  _lastSeq = header.seq;
+  if (header.seq % 100 == 0) {
+    std::cerr << "Received " << header.seq << " frames" << std::endl;
+  }
+
+  switch (header.type) {
+    case kPingRequest:
+      onPingRequest(data, size);
+      break;
+    case kPingResponse:
+      onPingResponse(data, size);
+      break;
+    case kAudio:
+      onAudio(data, size);
+      break;
+    default:
+      std::cerr << "Invalid message type " << header.type << std::endl;
+      break;
+  }
+}
+
+void Connection::onPingRequest(const void *data, size_t size) {
+  std::cout << "Received ping request" << std::endl;
+  PingResponse response{};
+  response.header.type = kPingResponse;
+  _pingSent = std::chrono::steady_clock::now();
+  send(&response, sizeof(response));
+}
+
+void Connection::onPingResponse(const void *data, size_t size) {
+  _delay = (std::chrono::steady_clock::now() - _pingSent);
+  std::cout << "Received ping response" << std::endl;
+  _connected = true;
+  _connectedCb();
+}
+
+void Connection::onAudio(const void *data, size_t size) {
+  const AudioMessage& msg = *static_cast<const AudioMessage*>(data);
+  if (size < sizeof(msg)) {
+    std::cerr << "Message smaller than audio header" << std::endl;
+    return;
+  }
+
+  if (size < (sizeof(msg) + msg.size)) {
+    std::cerr << "Truncated audio message with size " << msg.size << std::endl;
+    return;
+  }
+
+  std::vector<float> samples = _decoder.Decode(msg.bytes, msg.size, kFrameSize);
+  std::lock_guard<std::mutex> lck(_mutex);
+  _samples.addSamples(samples.data(), samples.size(), msg.host_timestamp);
+}
+
+std::vector<uint8_t> Connection::BuildAudioMessage(const Connection::AudioInfo& info, const float* samples, opus::Encoder& encoder) {
+  size_t max_frame = kMaxEncodedFrame * info.channels;
+  std::vector<uint8_t> result(sizeof(AudioMessage) + max_frame);
+  AudioMessage& msg = *reinterpret_cast<AudioMessage*>(result.data());
+  msg.header.type = kAudio;
+  msg.header.seq = info.seq;
+  msg.sample_timestamp = info.sample_timestamp;
+  msg.host_timestamp = info.host_timestamp;
+  msg.stream_id = info.stream_id;
+  msg.channels = info.channels;
+  msg.size = static_cast<uint16_t>(encoder.Encode(samples, static_cast<int>(kFrameSize), static_cast<unsigned char*>(msg.bytes), max_frame));
+  if (msg.size == 0) {
+    return {};
+  }
+  result.resize(sizeof(AudioMessage) + msg.size);
+  return result;
+}
+
+void Connection::receive(const AudioInfo& info, float* samples[], size_t num_samples) {
+  std::lock_guard<std::mutex> lck(_mutex);
+  uint64_t timestamp = info.host_timestamp + _timestamp_offset;
+  _samples.readSamples(samples, num_samples, info.channels, info.host_timestamp + _timestamp_offset);
 }
 
 }

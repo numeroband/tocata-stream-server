@@ -13,3 +13,9 @@
 [submodule "client/websocketpp"]
 	path = client/websocketpp
 	url = https://github.com/zaphoyd/websocketpp.git
+[submodule "client/opus"]
+	path = client/opus
+	url = https://github.com/xiph/opus.git
+[submodule "client/opuscpp"]
+	path = client/opuscpp
+	url = https://github.com/google/opuscpp.git
