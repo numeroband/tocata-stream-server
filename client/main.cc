@@ -74,14 +74,15 @@ int main(int argc, char* argv[]) try {
   auto period = std::chrono::nanoseconds(uint64_t(kBufferSize * kSamplePeriod));
   auto next = std::chrono::steady_clock::now();
   size_t total_samples = 0;
+  int64_t sample_id = 0;
   while (mode == kModeEcho || total_samples < kMaxSamples) {
     tocata::Session::AudioInfo info{
-      static_cast<int64_t>(total_samples),
-      static_cast<uint64_t>(std::chrono::nanoseconds(next.time_since_epoch()).count()),
+      sample_id,
       kSampleRate,
       0,
       2,
-    };    
+    };
+    sample_id += kBufferSize;    
     next += period;
     // Simulate audio buffering
     std::this_thread::sleep_until(std::chrono::steady_clock::time_point(next));

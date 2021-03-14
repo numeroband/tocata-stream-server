@@ -148,8 +148,7 @@ void Session::Impl::sendSamples(const AudioInfo& info, float* samples[], size_t 
   for (size_t i = 0; i < num_samples; ++i) {
     if (stream.samples.size() == 0) {
       stream.info = connAudioInfo(info);
-      stream.info.sample_timestamp += i;
-      stream.info.host_timestamp += i * (1e9 / info.sample_rate);
+      stream.info.sample_id += i;
     }
     stream.samples.push_back(samples[0][i]);
     stream.samples.push_back(samples[info.channels > 0 ? 1 : 0][i]);
@@ -267,8 +266,7 @@ void Session::Impl::onCandidates(websocketpp::connection_hdl hdl, std::string us
 Connection::AudioInfo Session::Impl::connAudioInfo(const AudioInfo& info, uint32_t seq) { 
   return {
     seq,
-    info.sample_timestamp,
-    info.host_timestamp,
+    info.sample_id,
     info.stream_id,
     info.channels,
   };

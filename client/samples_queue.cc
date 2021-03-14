@@ -8,105 +8,90 @@
 
 namespace tocata {
 
-SamplesQueue::SamplesQueue(uint32_t max_size, uint8_t channels, uint32_t sample_rate) 
-    : _samples(channels), _max_size(max_size), _sample_period(1e9 / sample_rate), _channels(channels) {
+SamplesQueue::SamplesQueue(uint32_t max_size, uint8_t channels) 
+    : _samples(channels), _max_size(max_size), _channels(channels) {
   for (uint8_t channel = 0; channel < channels; ++channel) {
     _samples[channel].resize(max_size);
     memset(_samples[channel].data(), 0xA5, max_size * sizeof(_samples[channel][0]));
   }
 }
 
-int64_t SamplesQueue::sampleIndex(uint64_t timestamp) {
-  if (_timestamp == 0) {
-    return 0;
-  }
-  // Add half period to go from -0.5 to 0.5 on each sample
-  const float delta = static_cast<float>(timestamp - _timestamp);
-  return static_cast<int64_t>(0.5 + (delta / _sample_period));
-}
-
-void SamplesQueue::setHeadAndSize(size_t num_samples, uint64_t timestamp) {
+void SamplesQueue::setHeadAndSize(size_t num_samples) {
   _size += num_samples;
   if (_size > _max_size) {
     size_t extra = _size - _max_size;
     _head = (_head + extra) % _max_size;
     _size = _max_size;
-    size_t delta = extra * _sample_period; 
-    _timestamp += delta;
+    _sample_id += extra;
   }  
 }
 
-void SamplesQueue::addSamplesWrapped(const float* interleaved, size_t num_samples, uint64_t timestamp) {
+void SamplesQueue::addSamplesWrapped(const float* interleaved, size_t num_samples) {
   for (uint8_t channel = 0; channel < _channels; ++channel) {
     for (size_t sample = 0; sample < num_samples; ++sample) {
       _samples[channel][tail() + sample] = interleaved[sample * _channels + channel];
     }
   }
-  setHeadAndSize(num_samples, timestamp);
+  setHeadAndSize(num_samples);
 }
 
-void SamplesQueue::addNullSamples(size_t num_samples, uint64_t timestamp) {
+void SamplesQueue::addNullSamples(size_t num_samples) {
   for (uint8_t channel = 0; channel < _channels; ++channel) {
     memset(_samples[channel].data() + tail(), 0, num_samples);
   }
-  setHeadAndSize(num_samples, timestamp);
+  setHeadAndSize(num_samples);
 }
 
-size_t SamplesQueue::skipSamples(uint64_t timestamp) {
-  int64_t start = sampleIndex(timestamp);
-  if (_timestamp == 0 || (start - _size) >= _max_size) {
-    assert(_timestamp == 0);
+size_t SamplesQueue::skipSamples(int64_t sample_id) {
+  int64_t start = sample_id - _sample_id;
+  if (_sample_id == kInvalidSampleId || (start - _size) >= _max_size) {
+    assert(_sample_id == kInvalidSampleId);
     _head = 0;
     _size = 0;
-    _timestamp = timestamp;
+    _sample_id = sample_id;
     return 0;
   }
 
   if (start < _size) {
-    std::cout << "Skipping " << _size - start << " early frames at " << timestamp << std::endl;
     return _size - start;
   }
 
   if (start > _size) {
     size_t null_samples = start - _size;
-    std::cout << "Skipping " << null_samples << " null frames at " << timestamp << std::endl;
     size_t remaining = null_samples;
     size_t wrap = beforeWrap();
     if (null_samples > wrap) {
-      addNullSamples(wrap, timestamp);
+      addNullSamples(wrap);
       remaining -= wrap;
-      timestamp += wrap * _sample_period;
+      sample_id += wrap;
     }
-    addNullSamples(remaining, timestamp);
+    addNullSamples(remaining);
     return null_samples;
   }
 
   return 0;
 }
 
-void SamplesQueue::addSamples(const float* interleaved, size_t num_samples, uint64_t timestamp) {
-  size_t skipped = skipSamples(timestamp);
+void SamplesQueue::addSamples(const float* interleaved, size_t num_samples, int64_t sample_id) {
+  size_t skipped = skipSamples(sample_id);
 #ifdef SQ_LOG
-  std::cout << "Adding " << num_samples << " samples starting at\t" << (timestamp / 1000);
+  std::cout << "Adding " << num_samples << " samples starting at\t" << sample_id;
 #endif
-  if (skipped) {
-    num_samples -= skipped;
-    interleaved += skipped * _channels;
-    timestamp += skipped * _sample_period;
-  }
+  num_samples -= skipped;
+  interleaved += skipped * _channels;
+  sample_id += skipped;
 
   size_t wrap = beforeWrap();
   if (num_samples > wrap) {
-    addSamplesWrapped(interleaved, wrap, timestamp);
+    addSamplesWrapped(interleaved, wrap);
     num_samples -= wrap;
     interleaved += wrap * _channels;
-    timestamp += wrap * _sample_period;
   }
-  addSamplesWrapped(interleaved, num_samples, timestamp);
+  addSamplesWrapped(interleaved, num_samples);
 #ifdef SQ_LOG
   std::cout << " - " << _size << " elem: " 
-    << _timestamp / 1000 << "-" 
-    << (_timestamp + (uint64_t)(_sample_period * _size)) / 1000 << std::endl;
+    << _sample_id << "-" 
+    << (_sample_id + _size - 1) << std::endl;
 #endif
 }
 
@@ -132,12 +117,12 @@ void SamplesQueue::readSamples(float* samples[], size_t num_samples, uint8_t num
   }
 }
 
-size_t SamplesQueue::readSamples(float* samples[], size_t num_samples, uint8_t num_channels, uint64_t timestamp) {
+size_t SamplesQueue::readSamples(float* samples[], size_t num_samples, uint8_t num_channels, int64_t sample_id) {
 #ifdef SQ_LOG
-  std::cout << "Reading " << num_samples << " samples starting at\t" << (timestamp / 1000);
+  std::cout << "Reading " << num_samples << " samples starting at\t" << sample_id;
 #endif
   size_t dst = 0;
-  int64_t start = sampleIndex(timestamp);
+  int64_t start = sample_id - _sample_id;
   if (start < 0) {
     size_t null_samples = std::min(static_cast<size_t>(-start), num_samples);
     readNullSamples(samples, null_samples, num_channels, dst);

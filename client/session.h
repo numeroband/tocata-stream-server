@@ -11,8 +11,7 @@ public:
     static constexpr uint8_t kMaxStreams = 2;
 
     struct AudioInfo {
-        int64_t sample_timestamp;
-        uint64_t host_timestamp;
+        int64_t sample_id;
         uint32_t sample_rate;
         uint8_t stream_id;
         uint8_t channels;
