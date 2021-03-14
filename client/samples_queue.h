@@ -10,7 +10,7 @@ public:
   SamplesQueue(uint32_t max_size, uint8_t channels, uint32_t sample_rate);
   size_t skipSamples(uint64_t timestamp);
   void addSamples(const float* interleaved, size_t num_samples, uint64_t timestamp);
-  bool readSamples(float* samples[], size_t num_samples, uint8_t num_channels, uint64_t timestamp);
+  size_t readSamples(float* samples[], size_t num_samples, uint8_t num_channels, uint64_t timestamp);
 
 private:
   size_t tail() { return (_head + _size) % _max_size; }

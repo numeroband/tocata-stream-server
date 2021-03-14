@@ -26,7 +26,7 @@ namespace tocata {
 struct Session::Impl {
     void connect(const std::string& username, const std::string& password);
     void sendSamples(const AudioInfo& info, float* samples[], size_t num_samples);
-    bool receiveSamples(const std::string& peer, const AudioInfo& info, float* samples[], size_t num_samples);
+    size_t receiveSamples(const std::string& peer, const AudioInfo& info, float* samples[], size_t num_samples);
 
 #ifdef TOCATA_LOCAL
     typedef websocketpp::client<websocketpp::config::asio_client> ws_client;
@@ -67,7 +67,7 @@ struct Session::Impl {
     void onCandidates(websocketpp::connection_hdl hdl, std::string username, Connection::Candidates candidates);
 
     struct Stream {
-      AudioInfo info;
+      Connection::AudioInfo info;
       std::vector<float> samples;
     };
 
@@ -97,7 +97,7 @@ void Session::sendSamples(const AudioInfo& info, float* samples[], size_t num_sa
   _pimpl->sendSamples(info, samples, num_samples);
 }
 
-bool Session::receiveSamples(const std::string& peer, const AudioInfo& info, float* samples[], size_t num_samples) {
+size_t Session::receiveSamples(const std::string& peer, const AudioInfo& info, float* samples[], size_t num_samples) {
   return _pimpl->receiveSamples(peer, info, samples, num_samples);
 }
 
@@ -146,14 +146,22 @@ void Session::Impl::sendSamples(const AudioInfo& info, float* samples[], size_t 
 {
   auto& stream = _streams[info.stream_id];
   for (size_t i = 0; i < num_samples; ++i) {
+    if (stream.samples.size() == 0) {
+      stream.info = connAudioInfo(info);
+      stream.info.sample_timestamp += i;
+      stream.info.host_timestamp += i * (1e9 / info.sample_rate);
+    }
     stream.samples.push_back(samples[0][i]);
     stream.samples.push_back(samples[info.channels > 0 ? 1 : 0][i]);
   
     if (stream.samples.size() == Connection::kNumChannels * Connection::kFrameSize) {
-      auto packet = Connection::BuildAudioMessage(connAudioInfo(info, ++_seq), stream.samples.data(), _encoder);
+      stream.info.seq = ++_seq;
+      auto packet = Connection::BuildAudioMessage(stream.info, stream.samples.data(), _encoder);
       if (!packet.empty()) {
         for (auto& conn : _connections) {
-          conn.second.send(packet.data(), packet.size());
+          if (conn.second.connected()) {
+            conn.second.send(packet.data(), packet.size());
+          }
         }
       }
       stream.samples.resize(0);
@@ -161,7 +169,7 @@ void Session::Impl::sendSamples(const AudioInfo& info, float* samples[], size_t 
   }
 }
 
-bool Session::Impl::receiveSamples(const std::string& peer, const AudioInfo& info, float* samples[], size_t num_samples)
+size_t Session::Impl::receiveSamples(const std::string& peer, const AudioInfo& info, float* samples[], size_t num_samples)
 {
   auto peer_iter = _connections.find(peer);
   if (peer_iter == _connections.end() || !peer_iter->second.connected()) {

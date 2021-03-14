@@ -13,7 +13,8 @@ static constexpr const char* kEchoStr = "echo";
 
 static constexpr size_t kBufferSize = 256;
 static constexpr size_t kSampleRate = 48000;
-static constexpr size_t kMaxSamples = 241920; // 5 seconds aligned to 256 and 480
+static constexpr float kSamplePeriod = 1e9 / kSampleRate;
+static constexpr size_t kMaxSamples = 238080; // ~5 seconds aligned to 512 and 480
 
 enum Mode {
   kModeInit,
@@ -49,7 +50,7 @@ int main(int argc, char* argv[]) try {
   } 
 
   if (mode == kModeInit) {
-    for (float i = 0; i < (2 * kMaxSamples); ++i) {
+    for (uint32_t i = 1; i <= (2 * kMaxSamples); ++i) {
       size_t ret = fwrite(&i, sizeof(i), 1, rec);
       assert(ret == 1);
     }
@@ -70,28 +71,44 @@ int main(int argc, char* argv[]) try {
   static float stereo_samples[2 * kBufferSize];
   float* samples[] = {stereo_samples, stereo_samples + kBufferSize};
 
-  auto period = std::chrono::nanoseconds(kBufferSize * 1000 * 1000 * 1000 / kSampleRate);
+  auto period = std::chrono::nanoseconds(uint64_t(kBufferSize * kSamplePeriod));
   auto next = std::chrono::steady_clock::now();
   size_t total_samples = 0;
   while (mode == kModeEcho || total_samples < kMaxSamples) {
-    next += period;
-    std::this_thread::sleep_until(std::chrono::steady_clock::time_point(next));
-
     tocata::Session::AudioInfo info{
       static_cast<int64_t>(total_samples),
       static_cast<uint64_t>(std::chrono::nanoseconds(next.time_since_epoch()).count()),
       kSampleRate,
       0,
       2,
-    };
+    };    
+    next += period;
+    // Simulate audio buffering
+    std::this_thread::sleep_until(std::chrono::steady_clock::time_point(next));
+
     size_t received = kBufferSize;
     if (receiving) {      
-      bool valid = session.receiveSamples(remote, info, samples, kBufferSize);
-      if (total_samples == 0 && !valid) {
+      received = session.receiveSamples(remote, info, samples, kBufferSize);
+      if (total_samples == 0 && received == 0) {
         continue;
       }
-      if (mode != kModeEcho) {
-        assert(valid);
+      uint32_t** int_samples = (uint32_t**)samples;
+      // for (size_t i = 0; i < kBufferSize / 4; ++i) {
+      //   printf("%06u: %08X %08X %08X %08X %08X %08X %08X %08X\n", 
+      //     (uint32_t)(total_samples + (i * 4)),
+      //     int_samples[0][i + 0],
+      //     int_samples[1][i + 0],
+      //     int_samples[0][i + 1],
+      //     int_samples[1][i + 1],
+      //     int_samples[0][i + 2],
+      //     int_samples[1][i + 2],
+      //     int_samples[0][i + 3],
+      //     int_samples[1][i + 3]);
+      // }
+      if (mode != kModeEcho && received != kBufferSize) {
+        std::cerr << "ERROR: Received " << received << " after frame " << total_samples << std::endl;
+      } else if (mode != kModeEcho && int_samples[0][0] == 0xa5a5a5a5) {
+        std::cerr << "ERROR: Received 0s after frame " << total_samples << std::endl;
       }
     }
     if (mode == kModeReceive) {

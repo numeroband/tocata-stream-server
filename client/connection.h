@@ -40,7 +40,7 @@ public:
   void setSendCandidatesCb(SendCandidatesCb cb) { _sendCandidatesCb = cb; }
   void setConnectedCb(ConnectedCb cb) { _connectedCb = cb; }
   void send(const void* data, size_t length);
-  bool receive(const AudioInfo& info, float* samples[], size_t num_samples);
+  size_t receive(const AudioInfo& info, float* samples[], size_t num_samples);
 
 private:
   enum MessageType : uint32_t {
@@ -61,6 +61,7 @@ private:
 
   struct PingResponse {
     MessageHeader header;
+    uint64_t host_timestamp;
   };
 
   struct AudioMessage {
@@ -73,9 +74,9 @@ private:
     uint8_t bytes[];
   };
 
-  static constexpr size_t kMaxQueueSize = 3 * kFrameSize;
-  static constexpr size_t kMaxEncodedFrame = 512;
-  static constexpr float kSamplePeriod = (1000 * 1000 * 1000) / kSampleRate;
+  static constexpr size_t kMaxQueueSize = 5 * kFrameSize;
+  static constexpr size_t kMaxEncodedFrame = 512 * kNumChannels * sizeof(float); // 512;
+  static constexpr float kSamplePeriod = 1e9 / kSampleRate;
   static constexpr int64_t kInvalidOffset = INT64_MAX;
 
   void onStateChanged(juice_state_t state);

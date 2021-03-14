@@ -20,6 +20,7 @@
 
 #include "opus_wrapper.h"
 
+#define OPUS_PASS_THROUGH
 #define LOG(...) std::cout
 
 std::string opus::ErrorToString(int error) {
@@ -100,8 +101,23 @@ int opus::Encoder::GetLookahead() {
 size_t opus::Encoder::Encode(
       const float* pcm, int frame_size, unsigned char* encoded, size_t encoded_size) {
   const auto frame_length = (frame_size * num_channels_ * sizeof(pcm[0]));
+#ifdef OPUS_PASS_THROUGH
+  memcpy(encoded, pcm, frame_length);
+  opus_int32 num_bytes = (opus_int32)frame_length;
+  // uint32_t* int_samples = (uint32_t*)encoded;
+  // printf("%08X %08X %08X %08X %08X %08X %08X %08X \n", 
+  //   int_samples[0],
+  //   int_samples[1],
+  //   int_samples[2],
+  //   int_samples[3],
+  //   int_samples[4],
+  //   int_samples[5],
+  //   int_samples[6],
+  //   int_samples[7]);
+#else
   auto num_bytes = opus_encode_float(encoder_.get(), pcm, frame_size,
                                encoded, encoded_size);
+#endif
   if (num_bytes < 0) {
     LOG(ERROR) << "Encode error: " << opus::ErrorToString(num_bytes);
     return 0;
@@ -181,10 +197,25 @@ std::vector<float> opus::Decoder::Decode(
 
 std::vector<float> opus::Decoder::Decode(
     const unsigned char* packet, size_t packet_size, int frame_size) {
-  const auto frame_length = (frame_size * num_channels_ * sizeof(opus_int16));
-  std::vector<float> decoded(frame_length);
+  const auto frame_length = (frame_size * num_channels_ * sizeof(float));
+  std::vector<float> decoded(frame_size * num_channels_);
+#ifdef OPUS_PASS_THROUGH
+  memcpy(decoded.data(), packet, frame_length);
+  int num_samples = frame_size;
+  // uint32_t* int_samples = (uint32_t*)decoded.data();
+  // printf("%08X %08X %08X %08X %08X %08X %08X %08X \n", 
+  //   int_samples[0],
+  //   int_samples[1],
+  //   int_samples[2],
+  //   int_samples[3],
+  //   int_samples[4],
+  //   int_samples[5],
+  //   int_samples[6],
+  //   int_samples[7]);
+#else  
   auto num_samples = opus_decode_float(decoder_.get(), packet, packet_size,
                                  decoded.data(), frame_size, false);
+#endif
   if (num_samples < 0) {
     LOG(ERROR) << "Decode error: " << opus::ErrorToString(num_samples);
     return {};

@@ -5,10 +5,6 @@
 namespace tocata {
 
 Connection::Connection() {
-  for (int i = 0; i < kNumChannels; ++i) {
-
-  }
-
 	juice_config_t config;
 	memset(&config, 0, sizeof(config));
 
@@ -37,9 +33,8 @@ void Connection::connect(const std::string& remote) {
 }
 
 void Connection::send(const void* data, size_t length) {
-  if (_connected) {
-		juice_send(_agent.get(), static_cast<const char*>(data), length);
-  }
+  auto ret = juice_send(_agent.get(), static_cast<const char*>(data), length);
+  assert(ret == JUICE_ERR_SUCCESS);
 }
 
 void Connection::setRemoteCandidates(Candidates candidates) {
@@ -61,8 +56,10 @@ void Connection::close() {
 
 void Connection::onStateChanged(juice_state_t state) {
   std::cout << "New state " << juice_state_to_string(state) << std::endl;
-	if (state == JUICE_STATE_CONNECTED) {
-    PingRequest request{kPingRequest};
+	if (state == JUICE_STATE_COMPLETED) {
+    PingRequest request{};
+    request.header.type = kPingRequest;
+    std::cout << "Sending ping request" << std::endl;
     send(&request, sizeof(request));
 	}
 
@@ -111,10 +108,12 @@ void Connection::onRecv(const void *data, size_t size) {
 }
 
 void Connection::onPingRequest(const void *data, size_t size) {
+  auto now = std::chrono::steady_clock::now();
+  _pingSent = now;
   std::cout << "Received ping request" << std::endl;
   PingResponse response{};
   response.header.type = kPingResponse;
-  _pingSent = std::chrono::steady_clock::now();
+  response.host_timestamp = std::chrono::nanoseconds(now.time_since_epoch()).count();
   send(&response, sizeof(response));
 }
 
@@ -148,7 +147,7 @@ void Connection::onAudio(const void *data, size_t size) {
       << " offset " << _timestamp_offset 
       << std::endl;
   }
-  _samples.addSamples(samples.data(), samples.size(), msg.host_timestamp);
+  _samples.addSamples(samples.data(), samples.size() / kNumChannels, msg.host_timestamp);
 }
 
 std::vector<uint8_t> Connection::BuildAudioMessage(const Connection::AudioInfo& info, const float* samples, opus::Encoder& encoder) {
@@ -169,10 +168,11 @@ std::vector<uint8_t> Connection::BuildAudioMessage(const Connection::AudioInfo& 
   return result;
 }
 
-bool Connection::receive(const AudioInfo& info, float* samples[], size_t num_samples) {
+size_t Connection::receive(const AudioInfo& info, float* samples[], size_t num_samples) {
   std::lock_guard<std::mutex> lck(_mutex);
-  uint64_t timestamp = info.host_timestamp + _timestamp_offset;
-  return _samples.readSamples(samples, num_samples, info.channels, info.host_timestamp + _timestamp_offset);
+  uint64_t delta = (kFrameSize * kSamplePeriod);
+  uint64_t timestamp = info.host_timestamp + _timestamp_offset - delta;
+  return _samples.readSamples(samples, num_samples, info.channels, timestamp);
 }
 
 }
