@@ -107,6 +107,7 @@ private:
   int64_t _sample_offset = kInvalidOffset;
   SampleTimestamp _local_sample_timestamp{};
   SampleTimestamp _remote_sample_timestamp{};
+  uint8_t _zero_samples = 0;
 };
 
 }

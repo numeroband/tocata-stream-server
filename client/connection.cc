@@ -179,7 +179,7 @@ void Connection::calculateSampleOffset() {
   _sample_offset = _remote_sample_timestamp.sample_id - _local_sample_timestamp.sample_id;
   int64_t timestamps_delta = _remote_sample_timestamp.timestamp - _local_sample_timestamp.timestamp;
   int64_t samples_delta = timestamps_delta / kSamplePeriod;
-  _sample_offset += samples_delta - (kMaxQueueSize / 2);
+  _sample_offset += samples_delta - kFrameSize * 1;
   std::cout << "sample offset " << _sample_offset
     << " local " << _local_sample_timestamp.sample_id 
     << " - " << _local_sample_timestamp.timestamp
@@ -203,7 +203,15 @@ size_t Connection::receive(const AudioInfo& info, float* samples[], size_t num_s
       return 0;
     }
   }
-  return _samples.readSamples(samples, num_samples, info.channels, info.sample_id + _sample_offset);
+  size_t received = _samples.readSamples(samples, num_samples, info.channels, info.sample_id + _sample_offset);
+  if (received == 0 && ++_zero_samples == 10) {
+    _zero_samples = 0;
+    std::cout << "Invalidating sample offset" << std::endl;
+    _sample_offset = kInvalidOffset;
+    _local_sample_timestamp = {};
+    _remote_sample_timestamp = {};
+  }
+  return received;
 }
 
 }

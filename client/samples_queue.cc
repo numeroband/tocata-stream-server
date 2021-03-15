@@ -45,7 +45,6 @@ void SamplesQueue::addNullSamples(size_t num_samples) {
 size_t SamplesQueue::skipSamples(int64_t sample_id) {
   int64_t start = sample_id - _sample_id;
   if (_sample_id == kInvalidSampleId || (start - _size) >= _max_size) {
-    assert(_sample_id == kInvalidSampleId);
     _head = 0;
     _size = 0;
     _sample_id = sample_id;
