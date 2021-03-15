@@ -12,7 +12,7 @@ static constexpr const char* kRecvStr = "recv";
 static constexpr const char* kEchoStr = "echo";
 
 static constexpr size_t kBufferSize = 256;
-static constexpr size_t kSampleRate = 48000;
+static constexpr size_t kSampleRate = 44100;
 static constexpr float kSamplePeriod = 1e9 / kSampleRate;
 static constexpr size_t kMaxSamples = 238080; // ~5 seconds aligned to 512 and 480
 

@@ -8,13 +8,14 @@
 #include <vector>
 #include <deque>
 #include <mutex>
+#include <chrono>
 
 namespace tocata {
 
 class Connection {
 public:
-  static const uint32_t kSampleRate = 48000;
-  static const uint32_t kFrameSize = 480;
+  static const uint32_t kSampleRate = 44100;
+  static const uint32_t kFrameSize = 256;
   static const uint32_t kNumChannels = 2;
 
   struct AudioInfo {
@@ -60,26 +61,18 @@ private:
 
   struct PingResponse {
     MessageHeader header;
-    uint64_t host_timestamp;
   };
 
   struct AudioMessage {
     MessageHeader header;
     int64_t sample_id;
-    uint64_t host_timestamp;
     uint8_t stream_id;
     uint8_t channels;
     uint16_t size;
     uint8_t bytes[];
   };
 
-  struct SampleTimestamp {
-    int64_t sample_id;
-    uint64_t timestamp;
-    operator bool() { return timestamp != 0; }
-  };
-
-  static constexpr size_t kMaxQueueSize = 4 * kFrameSize;
+  static constexpr size_t kMaxQueueSize = 6 * kFrameSize;
   static constexpr size_t kMaxEncodedFrame = 512 * kNumChannels * sizeof(float); // 512;
   static constexpr float kSamplePeriod = 1e9 / kSampleRate;
   static constexpr int64_t kInvalidOffset = INT64_MAX;
@@ -102,11 +95,9 @@ private:
   opus::Decoder _decoder{kSampleRate, kNumChannels};
   std::mutex _mutex{};
   bool _received = false;
-  std::chrono::system_clock::time_point _pingSent;
+  std::chrono::steady_clock::time_point _pingSent;
   SamplesQueue _samples{kMaxQueueSize, kNumChannels};
   int64_t _sample_offset = kInvalidOffset;
-  SampleTimestamp _local_sample_timestamp{};
-  SampleTimestamp _remote_sample_timestamp{};
   uint8_t _zero_samples = 0;
 };
 

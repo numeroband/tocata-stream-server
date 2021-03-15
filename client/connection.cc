@@ -60,6 +60,7 @@ void Connection::onStateChanged(juice_state_t state) {
     PingRequest request{};
     request.header.type = kPingRequest;
     std::cout << "Sending ping request" << std::endl;
+    _pingSent = std::chrono::steady_clock::now();
     send(&request, sizeof(request));
 	}
 
@@ -108,12 +109,9 @@ void Connection::onRecv(const void *data, size_t size) {
 }
 
 void Connection::onPingRequest(const void *data, size_t size) {
-  auto now = std::chrono::system_clock::now();
-  _pingSent = now;
-  std::cout << "Received ping request at " << std::chrono::nanoseconds(now.time_since_epoch()).count() << std::endl;
+  std::cout << "Received ping request" << std::endl;
   PingResponse response{};
   response.header.type = kPingResponse;
-  response.host_timestamp = std::chrono::nanoseconds(now.time_since_epoch()).count();
   send(&response, sizeof(response));
 }
 
@@ -123,10 +121,9 @@ void Connection::onPingResponse(const void *data, size_t size) {
     std::cerr << "Message  smaller than ping response" << std::endl;
     return;
   }
-  auto delay = (std::chrono::system_clock::now() - _pingSent);
-  std::cout << "Received ping response:"
-    << " local " << std::chrono::nanoseconds((_pingSent + (delay / 2)).time_since_epoch()).count()
-    << " remote " << response.host_timestamp 
+  auto delay = (std::chrono::steady_clock::now() - _pingSent);
+  std::cout << "Received ping response: " 
+    << std::chrono::duration_cast<std::chrono::microseconds>(delay).count() << "us"
     << std::endl;
   _connected = true;
   _connectedCb();
@@ -146,25 +143,16 @@ void Connection::onAudio(const void *data, size_t size) {
 
   std::vector<float> samples = _decoder.Decode(msg.bytes, msg.size, kFrameSize);
   std::lock_guard<std::mutex> lck(_mutex);
-  if (_sample_offset == kInvalidOffset) {
-    _remote_sample_timestamp = {msg.sample_id, msg.host_timestamp};
-    if (_local_sample_timestamp) {
-      calculateSampleOffset();
-    }
-  }
   _samples.addSamples(samples.data(), samples.size() / kNumChannels, msg.sample_id);
 }
 
 std::vector<uint8_t> Connection::BuildAudioMessage(const Connection::AudioInfo& info, const float* samples, opus::Encoder& encoder) {
-  auto now = std::chrono::system_clock::now().time_since_epoch();
-  uint64_t delta = static_cast<uint64_t>(kSamplePeriod * kFrameSize);
   size_t max_frame = kMaxEncodedFrame * info.channels;
   std::vector<uint8_t> result(sizeof(AudioMessage) + max_frame);
   AudioMessage& msg = *reinterpret_cast<AudioMessage*>(result.data());
   msg.header.type = kAudio;
   msg.header.seq = info.seq;
   msg.sample_id = info.sample_id;
-  msg.host_timestamp = std::chrono::nanoseconds(now).count() - delta;
   msg.stream_id = info.stream_id;
   msg.channels = info.channels;
   msg.size = static_cast<uint16_t>(encoder.Encode(samples, static_cast<int>(kFrameSize), static_cast<unsigned char*>(msg.bytes), max_frame));
@@ -175,41 +163,28 @@ std::vector<uint8_t> Connection::BuildAudioMessage(const Connection::AudioInfo& 
   return result;
 }
 
-void Connection::calculateSampleOffset() {
-  _sample_offset = _remote_sample_timestamp.sample_id - _local_sample_timestamp.sample_id;
-  int64_t timestamps_delta = _remote_sample_timestamp.timestamp - _local_sample_timestamp.timestamp;
-  int64_t samples_delta = timestamps_delta / kSamplePeriod;
-  _sample_offset += samples_delta - kFrameSize * 1;
-  std::cout << "sample offset " << _sample_offset
-    << " local " << _local_sample_timestamp.sample_id 
-    << " - " << _local_sample_timestamp.timestamp
-    << " remote " << _remote_sample_timestamp.sample_id
-    << " - " << _remote_sample_timestamp.timestamp
-    << std::endl;
-}
-
 size_t Connection::receive(const AudioInfo& info, float* samples[], size_t num_samples) {
   std::lock_guard<std::mutex> lck(_mutex);
   if (_sample_offset == kInvalidOffset) {
-    auto now = std::chrono::system_clock::now().time_since_epoch();
-    int64_t delta = static_cast<uint64_t>(kSamplePeriod * num_samples);
-    uint64_t local_timestamp = static_cast<uint64_t>(std::chrono::nanoseconds(now).count() - delta);
-    _local_sample_timestamp = {info.sample_id, local_timestamp};
-
-    if (_remote_sample_timestamp) {
-      calculateSampleOffset();
-    } else {
+    size_t headroom = num_samples + 2 * kFrameSize;
+    if (_samples.size() < headroom) {
       SamplesQueue::readNullSamples(samples, num_samples, info.channels);
       return 0;
     }
+    int64_t dst_sample_id = _samples.firstSampleId() + (_samples.size() - headroom);
+    _sample_offset = dst_sample_id - info.sample_id;
+    std::cout << "sample_offset " << _sample_offset
+      << " num_samples " << num_samples
+      << " dst_sample_id " << dst_sample_id
+      << " (" << _samples.firstSampleId() 
+      << "-" << _samples.firstSampleId() + _samples.size() - 1
+      << ")" << std::endl;
   }
   size_t received = _samples.readSamples(samples, num_samples, info.channels, info.sample_id + _sample_offset);
   if (received == 0 && ++_zero_samples == 10) {
     _zero_samples = 0;
-    std::cout << "Invalidating sample offset" << std::endl;
+    std::cerr << "Invalidating sample offset" << std::endl;
     _sample_offset = kInvalidOffset;
-    _local_sample_timestamp = {};
-    _remote_sample_timestamp = {};
   }
   return received;
 }

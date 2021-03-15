@@ -12,6 +12,8 @@ public:
   SamplesQueue(uint32_t max_size, uint8_t channels);
   void addSamples(const float* interleaved, size_t num_samples, int64_t sample_id);
   size_t readSamples(float* samples[], size_t num_samples, uint8_t num_channels, int64_t sample_id);
+  int64_t firstSampleId() { return _sample_id; }
+  size_t size() { return _size; }
 
 private:
   static constexpr uint64_t kInvalidSampleId = UINT64_MAX;
