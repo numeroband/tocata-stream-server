@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <iostream>
 
-#define SQ_LOG
+// #define SQ_LOG
 
 namespace tocata {
 
@@ -14,6 +14,12 @@ SamplesQueue::SamplesQueue(uint32_t max_size, uint8_t channels)
     _samples[channel].resize(max_size);
     memset(_samples[channel].data(), 0xA5, max_size * sizeof(_samples[channel][0]));
   }
+}
+
+void SamplesQueue::reset() {
+  _head = 0;
+  _size = 0;
+  _sample_id = kInvalidSampleId;
 }
 
 void SamplesQueue::setHeadAndSize(size_t num_samples) {
@@ -121,7 +127,7 @@ size_t SamplesQueue::readSamples(float* samples[], size_t num_samples, uint8_t n
   std::cout << "Reading " << num_samples << " samples starting at\t" << sample_id;
 #endif
   size_t dst = 0;
-  int64_t start = sample_id - _sample_id;
+  int64_t start = (_sample_id == kInvalidSampleId) ? 0 : (sample_id - _sample_id);
   if (start < 0) {
     size_t null_samples = std::min(static_cast<size_t>(-start), num_samples);
     readNullSamples(samples, null_samples, num_channels, dst);

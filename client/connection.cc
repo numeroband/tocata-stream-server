@@ -4,7 +4,7 @@
 
 namespace tocata {
 
-Connection::Connection() {
+void Connection::init(SendCandidatesCb sendCandidatesCb, ConnectedCb connectedCb) { 
 	juice_config_t config;
 	memset(&config, 0, sizeof(config));
 
@@ -25,7 +25,9 @@ Connection::Connection() {
 	config.user_ptr = this;
 
 	_agent.reset(juice_create(&config));
-}
+  _sendCandidatesCb = sendCandidatesCb;
+  _connectedCb = connectedCb;
+};
 
 void Connection::connect(const std::string& remote) {
   juice_set_remote_description(_agent.get(), remote.c_str());
@@ -51,7 +53,8 @@ std::string Connection::description() {
 }
 
 void Connection::close() {
-  std::cout << "Closing peer connection" << std::endl; 
+  std::cout << "Closing peer connection" << std::endl;
+  _agent.reset();
 }
 
 void Connection::onStateChanged(juice_state_t state) {
@@ -66,6 +69,7 @@ void Connection::onStateChanged(juice_state_t state) {
 
 	if (state == JUICE_STATE_DISCONNECTED) {
     _connected = false;
+    _connectedCb(false);
   }
 }
 
@@ -126,7 +130,7 @@ void Connection::onPingResponse(const void *data, size_t size) {
     << std::chrono::duration_cast<std::chrono::microseconds>(delay).count() << "us"
     << std::endl;
   _connected = true;
-  _connectedCb();
+  _connectedCb(true);
 }
 
 void Connection::onAudio(const void *data, size_t size) {
@@ -181,10 +185,11 @@ size_t Connection::receive(const AudioInfo& info, float* samples[], size_t num_s
       << ")" << std::endl;
   }
   size_t received = _samples.readSamples(samples, num_samples, info.channels, info.sample_id + _sample_offset);
-  if (received == 0 && ++_zero_samples == 10) {
+  if (received == 0 && ++_zero_samples >= kMaxZeroSamples) {
     _zero_samples = 0;
     std::cerr << "Invalidating sample offset" << std::endl;
     _sample_offset = kInvalidOffset;
+    _samples.reset();
   }
   return received;
 }

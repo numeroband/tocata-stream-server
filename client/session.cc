@@ -28,8 +28,8 @@ struct Session::Impl {
 
 #ifdef TOCATA_LOCAL
     typedef websocketpp::client<websocketpp::config::asio_client> ws_client;
-    static constexpr const char* kHttpServer = "http://192.168.1.57:5000";
-    static constexpr const char* kWebsocketServer = "ws://192.168.1.57:5000";
+    static constexpr const char* kHttpServer = "http://192.168.1.60:5000";
+    static constexpr const char* kWebsocketServer = "ws://192.168.1.60:5000";
 #else
     typedef websocketpp::client<websocketpp::config::asio_tls_client> ws_client;
     static constexpr const char* kHttpServer = "https://pacific-stream-85481.herokuapp.com";
@@ -187,11 +187,10 @@ void Session::Impl::sendHello(websocketpp::connection_hdl hdl) {
 
 void Session::Impl::sendConnect(websocketpp::connection_hdl hdl, std::string username) {
   auto& conn = _connections[username];
-  conn.setSendCandidatesCb([this, hdl, username](auto candidates) {
+  conn.init([this, hdl, username](auto candidates) {
     sendCandidates(hdl, username, candidates);
-  });
-  conn.setConnectedCb([this, username, &conn]() {
-    std::cout << "Connected to " << username << std::endl;
+  }, [this, username, &conn](bool connected) {    
+    std::cout << (connected ? "Connected to " : "Disconnected from ") << username << std::endl;
   });
   _ws.send(hdl, json{
     {kTypeKey, kConnectMsg}, 
@@ -239,11 +238,9 @@ void Session::Impl::onHello(websocketpp::connection_hdl hdl, const std::string& 
 void Session::Impl::onBye(websocketpp::connection_hdl hdl, const std::string& username) {
   std::cout << "Bye from " << username << std::endl;
   auto con_iter = _connections.find(username);
-  if (con_iter == _connections.end()) {
-    return;
+  if (con_iter != _connections.end()) {
+    con_iter->second.close();
   }
-  con_iter->second.close();
-  _connections.erase(con_iter);
 }
 
 void Session::Impl::onConnect(websocketpp::connection_hdl hdl, const std::string& username, const std::string& description) {

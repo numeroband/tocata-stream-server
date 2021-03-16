@@ -27,11 +27,11 @@ public:
   
   using Candidates = std::vector<std::string>;
   using SendCandidatesCb = std::function<void(Candidates)>;
-  using ConnectedCb = std::function<void()>;
+  using ConnectedCb = std::function<void(bool)>;
 
   static std::vector<uint8_t> BuildAudioMessage(const AudioInfo& info, const float* samples, Encoder& encoder);
 
-  Connection();
+  void init(SendCandidatesCb sendCandidatesCb, ConnectedCb connectedCb);
   void connect(const std::string& remote);
   void setRemoteCandidates(Candidates candidates);
   void close();
@@ -76,6 +76,7 @@ private:
   static constexpr size_t kMaxEncodedFrame = 512 * kNumChannels * sizeof(float); // 512;
   static constexpr float kSamplePeriod = 1e9 / kSampleRate;
   static constexpr int64_t kInvalidOffset = INT64_MAX;
+  static constexpr uint8_t kMaxZeroSamples = 5;
 
   void onStateChanged(juice_state_t state);
   void onCandidate(const char *sdp);
