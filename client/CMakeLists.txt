@@ -14,45 +14,51 @@ add_subdirectory(libjuice)
 add_subdirectory(opus)
 
 # Once the pubsub_client package is found, define new targets.
-add_library(tocata-stream SHARED
-    session.cc
-    connection.cc
-    samples_queue.cc
-    opus_rtp.cc
-    opus_wrapper.cc
-    session.h
+add_library(tocata-stream INTERFACE)
+
+target_sources(tocata-stream INTERFACE
+    ${PROJECT_SOURCE_DIR}/session.cc
+    ${PROJECT_SOURCE_DIR}/connection.cc
+    ${PROJECT_SOURCE_DIR}/samples_queue.cc
+    ${PROJECT_SOURCE_DIR}/codec.cc
+    ${PROJECT_SOURCE_DIR}/session.h
     )
-
-set_target_properties(tocata-stream PROPERTIES
-    FRAMEWORK TRUE
-    MACOSX_FRAMEWORK_IDENTIFIER com.tocata.TocataStream
-    PUBLIC_HEADER session.h
-    XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "macOS Developer"
-  )
   
-
-target_compile_definitions(tocata-stream PRIVATE 
+target_compile_definitions(tocata-stream INTERFACE 
     TOCATA_LOCAL
     ASIO_STANDALONE
     )
 
-target_include_directories(tocata-stream PRIVATE 
+target_include_directories(tocata-stream INTERFACE 
     asio/asio/include
     websocketpp
     cpp-httplib
     json/include
     )
 
-target_link_libraries(tocata-stream PRIVATE 
+target_link_libraries(tocata-stream INTERFACE 
     OpenSSL::SSL
     OpenSSL::Crypto
     LibJuice::LibJuiceStatic
     Opus::opus
     )
 
-add_executable(tocata-stream-test main.cc)
+add_library(tocata-stream-framework SHARED)
 
-target_link_libraries(tocata-stream-test PRIVATE 
+set_target_properties(tocata-stream-framework PROPERTIES
+    FRAMEWORK TRUE
+    MACOSX_FRAMEWORK_IDENTIFIER com.tocata.TocataStream
+    PUBLIC_HEADER session.h
+    XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "macOS Developer"
+    )
+
+target_link_libraries(tocata-stream-framework PRIVATE 
     tocata-stream
     )
+
+add_executable(tocata-stream-test)
+
+target_sources(tocata-stream-test PRIVATE main.cc)
+
+target_link_libraries(tocata-stream-test PRIVATE tocata-stream)
 

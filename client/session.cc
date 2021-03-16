@@ -1,6 +1,5 @@
 #include "session.h"
 #include "connection.h"
-#include "opus_wrapper.h"
 
 #define CPPHTTPLIB_OPENSSL_SUPPORT
 #include "httplib.h"
@@ -29,8 +28,8 @@ struct Session::Impl {
 
 #ifdef TOCATA_LOCAL
     typedef websocketpp::client<websocketpp::config::asio_client> ws_client;
-    static constexpr const char* kHttpServer = "http://localhost:5000";
-    static constexpr const char* kWebsocketServer = "ws://localhost:5000";
+    static constexpr const char* kHttpServer = "http://192.168.1.57:5000";
+    static constexpr const char* kWebsocketServer = "ws://192.168.1.57:5000";
 #else
     typedef websocketpp::client<websocketpp::config::asio_tls_client> ws_client;
     static constexpr const char* kHttpServer = "https://pacific-stream-85481.herokuapp.com";
@@ -73,7 +72,7 @@ struct Session::Impl {
     ws_client _ws;
     std::string _token;
     std::unordered_map<std::string, Connection> _connections;
-    opus::Encoder _encoder{Connection::kSampleRate, Connection::kNumChannels, OPUS_APPLICATION_RESTRICTED_LOWDELAY};
+    Encoder _encoder{Connection::kSampleRate, Connection::kNumChannels};
     uint32_t _seq = 0;
     std::vector<Stream> _streams;
 };

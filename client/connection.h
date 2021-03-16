@@ -1,9 +1,9 @@
 #pragma once
 
 #include "samples_queue.h"
+#include "codec.h"
 
 #include "juice/juice.h"
-#include "opus_wrapper.h"
 
 #include <vector>
 #include <deque>
@@ -29,7 +29,7 @@ public:
   using SendCandidatesCb = std::function<void(Candidates)>;
   using ConnectedCb = std::function<void()>;
 
-  static std::vector<uint8_t> BuildAudioMessage(const AudioInfo& info, const float* samples, opus::Encoder& encoder);
+  static std::vector<uint8_t> BuildAudioMessage(const AudioInfo& info, const float* samples, Encoder& encoder);
 
   Connection();
   void connect(const std::string& remote);
@@ -72,7 +72,7 @@ private:
     uint8_t bytes[];
   };
 
-  static constexpr size_t kMaxQueueSize = 6 * kFrameSize;
+  static constexpr size_t kMaxQueueSize = 8 * kFrameSize;
   static constexpr size_t kMaxEncodedFrame = 512 * kNumChannels * sizeof(float); // 512;
   static constexpr float kSamplePeriod = 1e9 / kSampleRate;
   static constexpr int64_t kInvalidOffset = INT64_MAX;
@@ -92,7 +92,7 @@ private:
   SendCandidatesCb _sendCandidatesCb;
   ConnectedCb _connectedCb;
   uint32_t _lastSeq = 0;
-  opus::Decoder _decoder{kSampleRate, kNumChannels};
+  Decoder _decoder{kSampleRate, kNumChannels};
   std::mutex _mutex{};
   bool _received = false;
   std::chrono::steady_clock::time_point _pingSent;

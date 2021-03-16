@@ -146,7 +146,7 @@ void Connection::onAudio(const void *data, size_t size) {
   _samples.addSamples(samples.data(), samples.size() / kNumChannels, msg.sample_id);
 }
 
-std::vector<uint8_t> Connection::BuildAudioMessage(const Connection::AudioInfo& info, const float* samples, opus::Encoder& encoder) {
+std::vector<uint8_t> Connection::BuildAudioMessage(const Connection::AudioInfo& info, const float* samples, Encoder& encoder) {
   size_t max_frame = kMaxEncodedFrame * info.channels;
   std::vector<uint8_t> result(sizeof(AudioMessage) + max_frame);
   AudioMessage& msg = *reinterpret_cast<AudioMessage*>(result.data());
@@ -166,7 +166,7 @@ std::vector<uint8_t> Connection::BuildAudioMessage(const Connection::AudioInfo& 
 size_t Connection::receive(const AudioInfo& info, float* samples[], size_t num_samples) {
   std::lock_guard<std::mutex> lck(_mutex);
   if (_sample_offset == kInvalidOffset) {
-    size_t headroom = num_samples + 2 * kFrameSize;
+    size_t headroom = num_samples + 4 * kFrameSize;
     if (_samples.size() < headroom) {
       SamplesQueue::readNullSamples(samples, num_samples, info.channels);
       return 0;
