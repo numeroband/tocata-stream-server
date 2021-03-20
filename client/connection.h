@@ -83,7 +83,7 @@ private:
   void onGatheringDone();
   void onRecv(const void *data, size_t size);
   void onAudio(const void *data, size_t size);
-  void onPingRequest(const void *data, size_t size);
+  void onPingRequest();
   void onPingResponse(const void *data, size_t size);
   void calculateSampleOffset();
 
@@ -100,6 +100,7 @@ private:
   SamplesQueue _samples{kMaxQueueSize, kNumChannels};
   int64_t _sample_offset = kInvalidOffset;
   uint8_t _zero_samples = 0;
+  bool _pending_ping_request = false;
 };
 
 }

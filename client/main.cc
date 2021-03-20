@@ -1,4 +1,5 @@
 #include "session.h"
+#include "codec.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -35,13 +36,13 @@ int main(int argc, char* argv[]) try {
   } else if (mode_str == kEchoStr) {
     mode = kModeEcho;
   } else {
-    mode = kModeReceive;
+    mode = kModeSend;
   }
   bool sending = (mode == kModeSend || mode == kModeEcho);
   bool receiving = (mode == kModeReceive || mode == kModeEcho);
-  std::string const username = argc > 2 ? argv[2] : (sending ? "javier.madueno" : "lorenzo.soto");
-  std::string const remote = argc > 3 ? argv[3] : (sending ? "lorenzo.soto" : "javier.madueno");
-  std::string const filename = argc > 4 ? argv[4] : (sending ? "/tmp/recording.bin" : "/tmp/received.bin");
+  std::string const username = argc > 2 ? argv[2] : (sending ? "javimadu@gmail.com" : "lorenzo.soto@gmail.com");
+  std::string const password = argc > 3 ? argv[3] : "password";
+  std::string const filename = argc > 4 ? argv[4] : (mode == kModeReceive ? "/tmp/received.bin" : "/tmp/recording.bin");
 
   FILE* rec;
   if (mode != kModeEcho) {
@@ -51,21 +52,29 @@ int main(int argc, char* argv[]) try {
 
   if (mode == kModeInit) {
     for (uint32_t i = 1; i <= (2 * kMaxSamples); ++i) {
-      size_t ret = fwrite(&i, sizeof(i), 1, rec);
+      float sample = tocata::Decoder::toFloat(static_cast<uint16_t>(i));
+      size_t ret = fwrite(&sample, sizeof(sample), 1, rec);
       assert(ret == 1);
     }
     fclose(rec);
     return 0;
   }
 
+  std::string peer_connected = "";
   tocata::Session session{};
   std::thread thread{[&]{
-    session.connect(username, "password");
+    session.connect(username, password,
+      [](auto status, auto name) {},
+      [&](auto peer_id, auto name, auto connected) {
+        peer_connected = peer_id;
+      });
   }};
 
   if (sending) {
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-    std::cout << "Assuming connected" << std::endl;
+    std::cout << "Waiting for connection" << std::endl;
+    while (peer_connected.empty()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
   }
 
   static float stereo_samples[2 * kBufferSize];
@@ -88,8 +97,8 @@ int main(int argc, char* argv[]) try {
     std::this_thread::sleep_until(std::chrono::steady_clock::time_point(next));
 
     size_t received = kBufferSize;
-    if (receiving) {      
-      received = session.receiveSamples(remote, info, samples, kBufferSize);
+    if (receiving) {
+      received = session.receiveSamples(peer_connected, info, samples, kBufferSize);
       if (total_samples == 0 && received == 0) {
         continue;
       }

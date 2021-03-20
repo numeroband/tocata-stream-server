@@ -32,7 +32,6 @@ target_compile_definitions(tocata-stream INTERFACE
 target_include_directories(tocata-stream INTERFACE 
     asio/asio/include
     websocketpp
-    cpp-httplib
     json/include
     )
 

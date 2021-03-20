@@ -18,8 +18,7 @@ size_t Encoder::Encode(
   for (size_t sample = 0; sample < frame_size; ++sample) {
     for (uint8_t channel = 0; channel < num_channels_; ++channel) {
       size_t index = num_channels_ * sample + channel;
-      const float sample_float = ((pcm[index] + 1) / 2) * 65535 + 0.5;
-      pcm16[index] = static_cast<uint16_t>(sample_float);
+      pcm16[index] = fromFloat(pcm[index]);
     }
   }
   return frame_size * num_channels_ * sizeof(pcm16[0]);
@@ -37,7 +36,7 @@ std::vector<float> Decoder::Decode(
   for (size_t sample = 0; sample < frame_size; ++sample) {
     for (uint8_t channel = 0; channel < num_channels_; ++channel) {
       size_t index = num_channels_ * sample + channel;
-      decoded[index] = (2 * (static_cast<float>(pcm16[index]) / 65535)) - 1;
+      decoded[index] = toFloat(pcm16[index]);
     }
   }
   return decoded;

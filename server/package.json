@@ -2,8 +2,9 @@
   "name": "tocata-stream",
   "version": "0.0.1",
   "dependencies": {
+    "bcrypt": "^5.0.1",
     "express": "^4.4.5",
-    "jsonwebtoken": "^8.5.1",
+    "pg": "^8.5.1",
     "ws": "^7.4.3"
   },
   "engines": {

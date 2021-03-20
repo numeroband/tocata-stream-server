@@ -65,6 +65,10 @@ void Connection::onStateChanged(juice_state_t state) {
     std::cout << "Sending ping request" << std::endl;
     _pingSent = std::chrono::steady_clock::now();
     send(&request, sizeof(request));
+    if (_pending_ping_request) {
+      _pending_ping_request = false;
+      onPingRequest();
+    }
 	}
 
 	if (state == JUICE_STATE_DISCONNECTED) {
@@ -98,7 +102,7 @@ void Connection::onRecv(const void *data, size_t size) {
 
   switch (header.type) {
     case kPingRequest:
-      onPingRequest(data, size);
+      onPingRequest();
       break;
     case kPingResponse:
       onPingResponse(data, size);
@@ -112,8 +116,13 @@ void Connection::onRecv(const void *data, size_t size) {
   }
 }
 
-void Connection::onPingRequest(const void *data, size_t size) {
+void Connection::onPingRequest() {
   std::cout << "Received ping request" << std::endl;
+  if (juice_get_state(_agent.get()) != JUICE_STATE_COMPLETED) {
+    _pending_ping_request = true;
+    std::cout << "Queueing response" << std::endl;
+    return;
+  }
   PingResponse response{};
   response.header.type = kPingResponse;
   send(&response, sizeof(response));
@@ -170,7 +179,7 @@ std::vector<uint8_t> Connection::BuildAudioMessage(const Connection::AudioInfo& 
 size_t Connection::receive(const AudioInfo& info, float* samples[], size_t num_samples) {
   std::lock_guard<std::mutex> lck(_mutex);
   if (_sample_offset == kInvalidOffset) {
-    size_t headroom = num_samples + 4 * kFrameSize;
+    size_t headroom = num_samples + 3 * kFrameSize;
     if (_samples.size() < headroom) {
       SamplesQueue::readNullSamples(samples, num_samples, info.channels);
       return 0;

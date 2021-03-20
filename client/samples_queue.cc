@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <iostream>
 
-// #define SQ_LOG
+#define SQ_LOG
 
 namespace tocata {
 

@@ -1,66 +1,94 @@
-const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
+
+const {Users} = require('./users');
 
 const peers = new Map();
-const secret = 'TocataStreamSecret'
+const users = new Users();
+users.connect();
+
+const STATUS_CONNECTED = 0
+const STATUS_INVALID_USER = 1
+const STATUS_INVALID_PASSWORD = 2
 
 function findPeer(ws) {
-  for (const [peer, peerWs] of peers.entries()) {
-    if (peerWs === ws) {
+  for (const [peer_id, peer] of peers.entries()) {
+    if (peer.ws === ws) {
       return peer;
     }
   }
+  return null;
 }
 
-function verifyToken(ws, token) {
-  const decoded = jwt.verify(token, secret);
-  if (!decoded) {
-    console.log('Invalid token', token);
-    return null;
+async function login(ws, msg) {
+  const {type, username, password} = msg;
+  console.log('Login from', username,);
+  
+  const peer = await users.find(username);
+  if (!peer) {
+    const status = STATUS_INVALID_USER;
+    const response = JSON.stringify({type, status});
+    ws.send(response);
+    return;
   }
-  peers.set(decoded.sub, ws);
-  return decoded.sub;
-}
 
-module.exports.joinSession = (username, password) => {
-  const token = jwt.sign({ sub: username }, secret, { expiresIn: '1d' });
-  console.log('sending', token);
-  return token;
+  const match = await bcrypt.compare(password, peer.password);
+  if (false) { // (!match) {
+    const status = STATUS_INVALID_PASSWORD;
+    const response = JSON.stringify({type, status});
+    ws.send(response);
+    return;
+  }
+
+  const status = STATUS_CONNECTED;
+  const sender = peer.id;
+  const name = peer.name;
+  peers.set(sender, {...peer, ws});
+  const response = JSON.stringify({type, sender, name, status});
+  ws.send(response);
 }
 
 module.exports.handleMessage = (ws, msg) => {
-  let {token, dst} = msg;
-  const sender = findPeer(ws) || verifyToken(ws, token);
-  
-  if (!sender) {
+  const {type, dst} = msg;
+  if (type == 'Login') {
+    return login(ws, msg);
+  }
+
+  const peer = findPeer(ws);
+  if (!peer) {
     ws.close();
     return;  
   }
 
-  const removeToken = msg => {
-    const {token, ...msgWithoutToken} = msg;
-    return msgWithoutToken;
-  }
-  const newMsg = JSON.stringify({sender, ...removeToken(msg)});
+  const sender = peer.id;
+  const name = peer.name;
+
+  const newMsg = JSON.stringify({sender, name, ...msg});
 
   if (dst) {
-    console.log(`Sending message from ${sender} to ${dst}`, newMsg);
-    peers.has(dst) && peers.get(dst).send(newMsg);
+    const dst_peer = peers.get(dst);
+    if (dst_peer) {
+      console.log(`Sending message from ${name} to ${dst_peer.name}`, newMsg);
+      dst_peer.ws.send(newMsg);  
+    } else {
+      console.err(`Unknown dst peer ${dst}`);
+    }
   } else {
-    console.log(`Broadcasting message from ${sender}`, newMsg);
-    peers.forEach(peerWs => ws !== peerWs && peerWs.send(newMsg));
+    console.log(`Broadcasting message from ${name}`, newMsg);
+    peers.forEach(p => ws !== p.ws && p.ws.send(newMsg));
   }
 }
 
 module.exports.leaveSession = ws => {
-  const sender = findPeer(ws);
-  if (!sender) {
+  const peer = findPeer(ws);
+  if (!peer) {
     return;
   }
-  console.log('Disconnected', sender);
+  const sender = peer.id;
+  console.log('Disconnected', peer.name);
   peers.delete(sender);
   const type = 'Bye';
   const byeMsg = JSON.stringify({sender, type});
-  for (const peerWs of peers.values()) {
-    peerWs.send(byeMsg);
+  for (const p of peers.values()) {
+    p.ws.send(byeMsg);
   }
 }
