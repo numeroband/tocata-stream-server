@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) try {
   } else if (mode_str == kEchoStr) {
     mode = kModeEcho;
   } else {
-    mode = kModeSend;
+    mode = kModeReceive;
   }
   bool sending = (mode == kModeSend || mode == kModeEcho);
   bool receiving = (mode == kModeReceive || mode == kModeEcho);
@@ -60,24 +60,28 @@ int main(int argc, char* argv[]) try {
     return 0;
   }
 
-  std::string peer_connected = "";
+  uint64_t peer_connected = 0;
   tocata::Session session{};
   std::thread thread{[&]{
     session.connect(username, password,
-      [](auto status, auto name) {},
-      [&](auto peer_id, auto name, auto connected) {
+      [&](auto status, auto peer_id, auto name, auto gain) {
+        if (mode == kModeEcho) {
+          *gain = 0.0;
+        }
+      },
+      [&](auto peer_id, auto name, auto connected, auto gain) {
         peer_connected = peer_id;
       });
   }};
 
   if (sending) {
     std::cout << "Waiting for connection" << std::endl;
-    while (peer_connected.empty()) {
+    while (!peer_connected) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
   }
 
-  static float stereo_samples[2 * kBufferSize];
+  static float stereo_samples[2 * kBufferSize] = {};
   float* samples[] = {stereo_samples, stereo_samples + kBufferSize};
 
   auto period = std::chrono::nanoseconds(uint64_t(kBufferSize * kSamplePeriod));
@@ -97,50 +101,40 @@ int main(int argc, char* argv[]) try {
     std::this_thread::sleep_until(std::chrono::steady_clock::time_point(next));
 
     size_t received = kBufferSize;
-    if (receiving) {
-      received = session.receiveSamples(peer_connected, info, samples, kBufferSize);
-      if (total_samples == 0 && received == 0) {
-        continue;
-      }
-      uint32_t** int_samples = (uint32_t**)samples;
-      // for (size_t i = 0; i < kBufferSize / 4; ++i) {
-      //   printf("%06u: %08X %08X %08X %08X %08X %08X %08X %08X\n", 
-      //     (uint32_t)(total_samples + (i * 4)),
-      //     int_samples[0][i + 0],
-      //     int_samples[1][i + 0],
-      //     int_samples[0][i + 1],
-      //     int_samples[1][i + 1],
-      //     int_samples[0][i + 2],
-      //     int_samples[1][i + 2],
-      //     int_samples[0][i + 3],
-      //     int_samples[1][i + 3]);
-      // }
-      if (mode != kModeEcho && received != kBufferSize) {
-        std::cerr << "ERROR: Received " << received << " after frame " << total_samples << std::endl;
-      } else if (mode != kModeEcho && int_samples[0][0] == 0xa5a5a5a5) {
-        std::cerr << "ERROR: Received 0s after frame " << total_samples << std::endl;
-      }
-    }
-    if (mode == kModeReceive) {
-      for (size_t i = 0; i < received; ++i) {
-        for (size_t channel = 0; channel < 2; ++channel) {
-          size_t ret = fwrite(samples[channel] + i, sizeof(samples[channel][i]), 1, rec);
-          assert(ret == 1);
-        }
-      }
-    }
-    if (mode == kModeSend) {
-      for (size_t i = 0; i < received; ++i) {
-        for (size_t channel = 0; channel < 2; ++channel) {
+
+    for (size_t i = 0; i < received; ++i) {
+      for (size_t channel = 0; channel < 2; ++channel) {
+        if (mode == kModeSend) {
           size_t ret = fread(samples[channel] + i, sizeof(samples[channel][i]), 1, rec);
           assert(ret == 1);
+        } else if (mode == kModeReceive) {
+          memset(samples[channel] + i, 0, sizeof(samples[channel][i]));
         }
       }
     }
-    if (sending) {
-      session.sendSamples(info, samples, received);
+
+    float pre_sample = samples[0][0];
+    session.processSamples(info, samples, kBufferSize);
+    float post_sample = samples[0][0];
+
+    // std::cout << "pre sample " << pre_sample << " post sample " << post_sample << std::endl;
+
+    if (mode == kModeReceive && total_samples == 0 && post_sample == 0) {
+      continue;
     }
-    total_samples += kBufferSize;
+
+    total_samples += received;
+
+    if (mode != kModeReceive) {
+      continue;
+    }
+
+    for (size_t i = 0; i < received; ++i) {
+      for (size_t channel = 0; channel < 2; ++channel) {
+        size_t ret = fwrite(samples[channel] + i, sizeof(samples[channel][i]), 1, rec);
+        assert(ret == 1);
+      }
+    }
   };
 
   std::cout << "All sent" << std::endl;

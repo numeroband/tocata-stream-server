@@ -6,7 +6,7 @@
 #include <websocketpp/client.hpp>
 
 #include <functional>
-#include <unordered_map>
+#include <array>
 
 using json = nlohmann::json;
 
@@ -21,8 +21,8 @@ namespace tocata {
 
 struct Session::Impl {
     void connect(const std::string& username, const std::string& password, StatusCb status_cb, PeerCb peer_cb);
+    void processSamples(const AudioInfo& info, float* samples[], size_t num_samples);
     void sendSamples(const AudioInfo& info, float* samples[], size_t num_samples);
-    size_t receiveSamples(const std::string& peer_id, const AudioInfo& info, float* samples[], size_t num_samples);
 
 #ifdef TOCATA_LOCAL
     typedef websocketpp::client<websocketpp::config::asio_client> ws_client;
@@ -48,19 +48,24 @@ struct Session::Impl {
     static constexpr const char* kConnectMsg = "Connect";
     static constexpr const char* kCandidatesMsg = "Candidates";
 
+    static constexpr const size_t kMaxConnections = 5;
+
     static Connection::AudioInfo connAudioInfo(const AudioInfo& info, uint32_t seq = 0);
+
+    Connection& getConnection(uint64_t peer_id);
+    void initConnection(websocketpp::connection_hdl hdl, Connection& conn, uint64_t peer_id, std::string name);
 
     void sendLogin(websocketpp::connection_hdl hdl, const std::string& username, const std::string& password);
     void sendHello(websocketpp::connection_hdl hdl);
-    void sendConnect(websocketpp::connection_hdl hdl, std::string peer_id, std::string name);
-    void sendCandidates(websocketpp::connection_hdl hdl, std::string peer_id, Connection::Candidates candidates);
+    void sendConnect(websocketpp::connection_hdl hdl, uint64_t peer_id, const std::string& description);
+    void sendCandidates(websocketpp::connection_hdl hdl, uint64_t peer_id, const std::string& description, Connection::Candidates candidates);
 
     void onMessage(websocketpp::connection_hdl hdl, message_ptr msg);
-    void onLogin(websocketpp::connection_hdl hdl, Status status, const std::string& name);
-    void onHello(websocketpp::connection_hdl hdl, const std::string& peer_id, const std::string& name);
-    void onBye(websocketpp::connection_hdl hdl, const std::string& peer_id);
-    void onConnect(websocketpp::connection_hdl hdl, const std::string& peer_id, const std::string& name, const std::string& description);
-    void onCandidates(websocketpp::connection_hdl hdl, std::string peer_id, Connection::Candidates candidates);
+    void onLogin(websocketpp::connection_hdl hdl, Status status, uint64_t peer_id = Connection::kInvalidPeerId, const std::string& name = "");
+    void onHello(websocketpp::connection_hdl hdl, uint64_t peer_id, const std::string& name);
+    void onBye(websocketpp::connection_hdl hdl, uint64_t peer_id);
+    void onConnect(websocketpp::connection_hdl hdl, uint64_t peer_id, const std::string& name, const std::string& description);
+    void onCandidates(websocketpp::connection_hdl hdl, uint64_t peer_id, const std::string& description, Connection::Candidates candidates);
 
     struct Stream {
       Connection::AudioInfo info;
@@ -70,10 +75,12 @@ struct Session::Impl {
     ws_client _ws;
     StatusCb _status_cb;
     PeerCb _peer_cb;
-    std::unordered_map<std::string, Connection> _connections;
+    std::array<Connection, kMaxConnections> _connections{};
     Encoder _encoder{Connection::kSampleRate, Connection::kNumChannels};
     uint32_t _seq = 0;
     std::vector<Stream> _streams;
+    std::mutex _mutex{};
+    float _gain = 0.0;
 };
 
 Session::Session() : _pimpl(std::make_unique<Impl>()) {
@@ -90,17 +97,14 @@ void Session::connect(const std::string& username, const std::string& password, 
   _pimpl->connect(username, password, status_cb, peer_cb);
 }
 
-void Session::sendSamples(const AudioInfo& info, float* samples[], size_t num_samples) {
-  _pimpl->sendSamples(info, samples, num_samples);
-}
-
-size_t Session::receiveSamples(const std::string& peer_id, const AudioInfo& info, float* samples[], size_t num_samples) {
-  return _pimpl->receiveSamples(peer_id, info, samples, num_samples);
+void Session::processSamples(const AudioInfo& info, float* samples[], size_t num_samples) {
+  _pimpl->processSamples(info, samples, num_samples);
 }
 
 void Session::Impl::connect(const std::string& username, const std::string& password, StatusCb status_cb, PeerCb peer_cb) {
   _status_cb = status_cb;
   _peer_cb = peer_cb;
+  _gain = 0.0;
 
   _ws.set_access_channels(websocketpp::log::alevel::none);
   _ws.init_asio();
@@ -145,8 +149,8 @@ void Session::Impl::sendSamples(const AudioInfo& info, float* samples[], size_t 
       auto packet = Connection::BuildAudioMessage(stream.info, stream.samples.data(), _encoder);
       if (!packet.empty()) {
         for (auto& conn : _connections) {
-          if (conn.second.connected()) {
-            conn.second.send(packet.data(), packet.size());
+          if (conn.connected()) {
+            conn.send(packet.data(), packet.size());
           }
         }
       }
@@ -155,16 +159,26 @@ void Session::Impl::sendSamples(const AudioInfo& info, float* samples[], size_t 
   }
 }
 
-size_t Session::Impl::receiveSamples(const std::string& peer_id, const AudioInfo& info, float* samples[], size_t num_samples)
+void Session::Impl::processSamples(const AudioInfo& info, float* samples[], size_t num_samples)
 {
-  auto peer_iter = _connections.find(peer_id);
-  if (peer_iter == _connections.end() || !peer_iter->second.connected()) {
-    for (uint8_t channel = 0; channel < info.channels; ++channel) {
-      memset(samples[channel], 0, num_samples * sizeof(samples[channel][0]));
+  float gain = _gain;
+  // Send original samples
+  sendSamples(info, samples, num_samples);
+
+  // Apply gain to local audio
+  for (uint8_t channel = 0; channel < info.channels; ++channel) {
+    for (size_t sample = 0; sample < num_samples; ++sample) {
+      samples[channel][sample] *= gain;
     }
-    return false;
   }
-  return peer_iter->second.receive(connAudioInfo(info), samples, num_samples);
+
+  // Received remote audio (each connection will aply its own gain)
+  auto conn_info = connAudioInfo(info);
+  for (auto& conn : _connections) {
+    if (conn.connected()) {
+      conn.receive(conn_info, samples, num_samples);
+    }
+  }  
 }
 
 void Session::Impl::sendLogin(websocketpp::connection_hdl hdl, const std::string& username, const std::string& password) {
@@ -181,26 +195,45 @@ void Session::Impl::sendHello(websocketpp::connection_hdl hdl) {
   }.dump(), websocketpp::frame::opcode::text);
 }
 
-void Session::Impl::sendConnect(websocketpp::connection_hdl hdl, std::string peer_id, std::string name) {
-  auto& conn = _connections[peer_id];
-  conn.init([this, hdl, peer_id](auto candidates) {
-    sendCandidates(hdl, peer_id, candidates);
-  }, [this, peer_id, name, &conn](bool connected) {    
+Connection& Session::Impl::getConnection(uint64_t peer_id) {
+  std::lock_guard<std::mutex> lk{_mutex};
+  Connection* empty = nullptr;
+  for (auto& conn : _connections) {
+    if (conn.peerId() == peer_id) {
+      return conn;
+    }
+
+    if (!empty && conn.peerId() == Connection::kInvalidPeerId) {
+      empty = &conn;
+    }
+  }
+  assert(empty);
+  return *empty;
+}
+
+void Session::Impl::initConnection(websocketpp::connection_hdl hdl, Connection& conn, uint64_t peer_id, std::string name) {
+  conn.init(peer_id, [this, hdl, &conn](auto candidates) {
+    sendCandidates(hdl, conn.peerId(), conn.description(), candidates);
+  }, [this, peer_id, name](bool connected, float* gain) {    
     std::cout << (connected ? "Connected to " : "Disconnected from ") << name << " - " << peer_id << std::endl;
-    _peer_cb(peer_id, name, connected);
+    _peer_cb(peer_id, name, connected, gain);
   });
+}
+
+void Session::Impl::sendConnect(websocketpp::connection_hdl hdl, uint64_t peer_id, const std::string& description) {
   _ws.send(hdl, json{
     {kTypeKey, kConnectMsg}, 
     {kDstKey, peer_id},
-    {kDescriptionKey, conn.description()},
+    {kDescriptionKey, description},
   }.dump(), websocketpp::frame::opcode::text);
 }
 
-void Session::Impl::sendCandidates(websocketpp::connection_hdl hdl, std::string peer_id, Connection::Candidates candidates)
+void Session::Impl::sendCandidates(websocketpp::connection_hdl hdl, uint64_t peer_id, const std::string& description, Connection::Candidates candidates)
 {
   _ws.send(hdl, json{
     {kTypeKey, kCandidatesMsg}, 
     {kDstKey, peer_id},
+    {kDescriptionKey, description},
     {kCandidatesKey, candidates},
   }.dump(), websocketpp::frame::opcode::text);
 }
@@ -212,11 +245,16 @@ void Session::Impl::onMessage(websocketpp::connection_hdl hdl, message_ptr msg) 
 
     if (type == kLoginMsg) {
       Status status = obj[kStatusKey];
-      onLogin(hdl, status, status == kConnected ? obj[kNameKey] : "");
+      if (status == kConnected) {
+        onLogin(hdl, status, obj[kSenderKey], obj[kNameKey]);
+      } else {
+        onLogin(hdl, status);
+      }
+
       return;
     }
 
-    std::string sender = obj[kSenderKey];
+    uint64_t sender = obj[kSenderKey];
     if (type == kHelloMsg) {
       onHello(hdl, sender, obj[kNameKey]);
     } else if (type == kByeMsg) {
@@ -224,7 +262,7 @@ void Session::Impl::onMessage(websocketpp::connection_hdl hdl, message_ptr msg) 
     } else if (type == kConnectMsg) {
       onConnect(hdl, sender, obj[kNameKey], obj[kDescriptionKey]);
     } else if (type == kCandidatesMsg) {
-      onCandidates(hdl, sender, obj[kCandidatesKey]);
+      onCandidates(hdl, sender, obj[kDescriptionKey], obj[kCandidatesKey]);
     } else {
       std::cerr << "Unknown message type " << type << std::endl;
     }
@@ -233,9 +271,10 @@ void Session::Impl::onMessage(websocketpp::connection_hdl hdl, message_ptr msg) 
   }
 }
 
-void Session::Impl::onLogin(websocketpp::connection_hdl hdl, Status status, const std::string& name) {
+void Session::Impl::onLogin(websocketpp::connection_hdl hdl, Status status, uint64_t peer_id, const std::string& name) {
   std::cout << "Login status " << status << " name " << name << std::endl;
-  _status_cb(status, name);
+  _gain = 1.0;
+  _status_cb(status, peer_id, name, &_gain);
   if (status == kConnected) {
       sendHello(hdl);
   } else {
@@ -243,32 +282,45 @@ void Session::Impl::onLogin(websocketpp::connection_hdl hdl, Status status, cons
   }
 }
 
-void Session::Impl::onHello(websocketpp::connection_hdl hdl, const std::string& peer_id, const std::string& name) {
+void Session::Impl::onHello(websocketpp::connection_hdl hdl, uint64_t peer_id, const std::string& name) {
   std::cout << "Hello from " << name << " - " << peer_id << std::endl;
-  sendConnect(hdl, peer_id, name);
+  auto& conn = getConnection(peer_id);
+  if (!conn.invalid()) {
+    return;
+  }
+  initConnection(hdl, conn, peer_id, name);
+  sendConnect(hdl, peer_id, conn.description());
 }
 
-void Session::Impl::onBye(websocketpp::connection_hdl hdl, const std::string& peer_id) {
+void Session::Impl::onBye(websocketpp::connection_hdl hdl, uint64_t peer_id) {
   std::cout << "Bye from " << peer_id << std::endl;
-  auto con_iter = _connections.find(peer_id);
-  if (con_iter != _connections.end()) {
-    con_iter->second.close();
+  auto& conn = getConnection(peer_id);
+  if (conn.invalid()) {
+    return;
   }
+  conn.close();
 }
 
-void Session::Impl::onConnect(websocketpp::connection_hdl hdl, const std::string& peer_id, const std::string& name, const std::string& description) {
+void Session::Impl::onConnect(websocketpp::connection_hdl hdl, uint64_t peer_id, const std::string& name, const std::string& description) {
   std::cout << "Connect from " << name << " - " << peer_id << std::endl;
-  if (_connections.find(peer_id) == _connections.end()) {
-    sendConnect(hdl, peer_id, name);
+  auto& conn = getConnection(peer_id);
+  if (!conn.invalid()) {
+    return;
   }
-  auto& conn = _connections[peer_id];
+  initConnection(hdl, conn, peer_id, name);
   conn.connect(description);
 }
 
-void Session::Impl::onCandidates(websocketpp::connection_hdl hdl, std::string peer_id, Connection::Candidates candidates) {
+void Session::Impl::onCandidates(websocketpp::connection_hdl hdl, uint64_t peer_id, const std::string& description, Connection::Candidates candidates) {
   std::cout << "Candidates from " << peer_id << std::endl;
-  auto& conn = _connections[peer_id];
+  auto& conn = getConnection(peer_id);
+  if (conn.invalid()) {
+    return;
+  }
   conn.setRemoteCandidates(candidates);
+  if (!conn.connecting()) {
+    conn.connect(description);
+  }
 }
 
 Connection::AudioInfo Session::Impl::connAudioInfo(const AudioInfo& info, uint32_t seq) { 

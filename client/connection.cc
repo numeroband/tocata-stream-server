@@ -4,12 +4,14 @@
 
 namespace tocata {
 
-void Connection::init(SendCandidatesCb sendCandidatesCb, ConnectedCb connectedCb) { 
+void Connection::init(uint64_t peer_id, SendCandidatesCb sendCandidatesCb, ConnectedCb connectedCb) {   
 	juice_config_t config;
 	memset(&config, 0, sizeof(config));
 
 	config.stun_server_host = "stun.stunprotocol.org";
 	config.stun_server_port = 3478;
+	// config.stun_server_host = "stun.l.google.com";
+	// config.stun_server_port = 19302;
 	config.cb_state_changed = [](auto agent, auto state, auto user_ptr) {
     static_cast<Connection*>(user_ptr)->onStateChanged(state);
   };
@@ -24,12 +26,16 @@ void Connection::init(SendCandidatesCb sendCandidatesCb, ConnectedCb connectedCb
   };
 	config.user_ptr = this;
 
+  _connecting = false;
+  _peer_id = peer_id;
+  _gain = 0.0;
 	_agent.reset(juice_create(&config));
   _sendCandidatesCb = sendCandidatesCb;
   _connectedCb = connectedCb;
 };
 
 void Connection::connect(const std::string& remote) {
+  _connecting = true;
   juice_set_remote_description(_agent.get(), remote.c_str());
   juice_gather_candidates(_agent.get());
 }
@@ -55,6 +61,7 @@ std::string Connection::description() {
 void Connection::close() {
   std::cout << "Closing peer connection" << std::endl;
   _agent.reset();
+  _peer_id = kInvalidPeerId;
 }
 
 void Connection::onStateChanged(juice_state_t state) {
@@ -73,7 +80,8 @@ void Connection::onStateChanged(juice_state_t state) {
 
 	if (state == JUICE_STATE_DISCONNECTED) {
     _connected = false;
-    _connectedCb(false);
+    _gain = 0.0;
+    _connectedCb(false, &_gain);
   }
 }
 
@@ -139,7 +147,8 @@ void Connection::onPingResponse(const void *data, size_t size) {
     << std::chrono::duration_cast<std::chrono::microseconds>(delay).count() << "us"
     << std::endl;
   _connected = true;
-  _connectedCb(true);
+  _gain = 1.0;
+  _connectedCb(true, &_gain);
 }
 
 void Connection::onAudio(const void *data, size_t size) {
@@ -181,7 +190,6 @@ size_t Connection::receive(const AudioInfo& info, float* samples[], size_t num_s
   if (_sample_offset == kInvalidOffset) {
     size_t headroom = num_samples + 3 * kFrameSize;
     if (_samples.size() < headroom) {
-      SamplesQueue::readNullSamples(samples, num_samples, info.channels);
       return 0;
     }
     int64_t dst_sample_id = _samples.firstSampleId() + (_samples.size() - headroom);
@@ -193,7 +201,7 @@ size_t Connection::receive(const AudioInfo& info, float* samples[], size_t num_s
       << "-" << _samples.firstSampleId() + _samples.size() - 1
       << ")" << std::endl;
   }
-  size_t received = _samples.readSamples(samples, num_samples, info.channels, info.sample_id + _sample_offset);
+  size_t received = _samples.readSamples(samples, num_samples, info.channels, info.sample_id + _sample_offset, _gain);
   if (received == 0 && ++_zero_samples >= kMaxZeroSamples) {
     _zero_samples = 0;
     std::cerr << "Invalidating sample offset" << std::endl;

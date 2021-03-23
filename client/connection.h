@@ -14,9 +14,10 @@ namespace tocata {
 
 class Connection {
 public:
-  static const uint32_t kSampleRate = 44100;
-  static const uint32_t kFrameSize = 256;
-  static const uint32_t kNumChannels = 2;
+  static constexpr uint32_t kSampleRate = 44100;
+  static constexpr uint32_t kFrameSize = 256;
+  static constexpr uint32_t kNumChannels = 2;
+  static constexpr uint64_t kInvalidPeerId = 0;
 
   struct AudioInfo {
       uint32_t seq;
@@ -27,16 +28,19 @@ public:
   
   using Candidates = std::vector<std::string>;
   using SendCandidatesCb = std::function<void(Candidates)>;
-  using ConnectedCb = std::function<void(bool)>;
+  using ConnectedCb = std::function<void(bool connected, float* gain)>;
 
   static std::vector<uint8_t> BuildAudioMessage(const AudioInfo& info, const float* samples, Encoder& encoder);
 
-  void init(SendCandidatesCb sendCandidatesCb, ConnectedCb connectedCb);
+  void init(uint64_t peer_id, SendCandidatesCb sendCandidatesCb, ConnectedCb connectedCb);
   void connect(const std::string& remote);
   void setRemoteCandidates(Candidates candidates);
   void close();
   std::string description();
+  bool invalid() { return _peer_id == kInvalidPeerId; }
   bool connected() { return _connected; };
+  bool connecting() { return _connecting; };
+  uint64_t peerId() { return _peer_id; }
   void setSendCandidatesCb(SendCandidatesCb cb) { _sendCandidatesCb = cb; }
   void setConnectedCb(ConnectedCb cb) { _connectedCb = cb; }
   void send(const void* data, size_t length);
@@ -87,7 +91,9 @@ private:
   void onPingResponse(const void *data, size_t size);
   void calculateSampleOffset();
 
+  uint64_t _peer_id = kInvalidPeerId;
   std::atomic<bool> _connected = false;
+  bool _connecting = false;
   std::unique_ptr<juice_agent_t, decltype(&juice_destroy)> _agent{nullptr, &juice_destroy};
   Candidates _candidates;
   SendCandidatesCb _sendCandidatesCb;
@@ -101,6 +107,7 @@ private:
   int64_t _sample_offset = kInvalidOffset;
   uint8_t _zero_samples = 0;
   bool _pending_ping_request = false;
+  float _gain = 0.0;
 };
 
 }

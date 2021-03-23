@@ -100,29 +100,36 @@ void SamplesQueue::addSamples(const float* interleaved, size_t num_samples, int6
 #endif
 }
 
-void SamplesQueue::readNullSamples(float* samples[], size_t num_samples, uint8_t num_channels, size_t dst_index) {
-  for (uint8_t channel = 0; channel < num_channels; ++channel) {
-    memset(samples[channel] + dst_index, 0, num_samples * sizeof(samples[channel][0]));
+void SamplesQueue::readSamples(float* samples[], size_t num_samples, uint8_t num_channels, size_t src_index, size_t dst_index, float gain) {
+  size_t start = (_head + src_index) % _max_size;
+  size_t wrap = _max_size - start;
+  // Copy channel 0 in any extra dst channels
+  if (num_samples > wrap) {
+    for (size_t i = 0; i < wrap; ++i) {
+      for (uint8_t channel = 0; channel < num_channels; ++channel) {
+        uint8_t src_channel = (channel < _channels) ? channel : 0;
+        float pre_sample = samples[channel][dst_index + i];
+        samples[channel][dst_index + i] += gain * _samples[src_channel][start + i];
+        float post_sample = samples[channel][dst_index + i];
+        // std::cout << "wrap pre sample " << pre_sample << " post sample " << post_sample << std::endl;
+      }
+    }
+    num_samples -= wrap;
+    start = 0;
+    dst_index += wrap;
+  } 
+  for (size_t i = 0; i < num_samples; ++i) {
+    for (uint8_t channel = 0; channel < num_channels; ++channel) {
+      uint8_t src_channel = (channel < _channels) ? channel : 0;
+      float pre_sample = samples[channel][dst_index + i];
+      samples[channel][dst_index + i] += gain * _samples[src_channel][start + i];
+      float post_sample = samples[channel][dst_index + i];
+      // std::cout << "read pre sample " << pre_sample << " post sample " << post_sample << std::endl;
+    }
   }
 }
 
-void SamplesQueue::readSamples(float* samples[], size_t num_samples, uint8_t num_channels, size_t src_index, size_t dst_index) {
-  for (uint8_t channel = 0; channel < num_channels; ++channel) {
-    size_t start = (_head + src_index) % _max_size;
-    size_t wrap = _max_size - start;
-    // Copy channel 0 in any extra dst channels
-    uint8_t src_channel = (channel < _channels) ? channel : 0;
-    if (num_samples > wrap) {
-      memcpy(samples[channel] + dst_index, _samples[src_channel].data() + start, wrap * sizeof(_samples[0][0]));
-      num_samples -= wrap;
-      start = 0;
-      dst_index += wrap;
-    } 
-    memcpy(samples[channel] + dst_index, _samples[src_channel].data() + start, num_samples * sizeof(_samples[0][0]));
-  }
-}
-
-size_t SamplesQueue::readSamples(float* samples[], size_t num_samples, uint8_t num_channels, int64_t sample_id) {
+size_t SamplesQueue::readSamples(float* samples[], size_t num_samples, uint8_t num_channels, int64_t sample_id, float gain) {
 #ifdef SQ_LOG
   std::cout << "Reading " << num_samples << " samples starting at\t" << sample_id;
 #endif
@@ -130,7 +137,6 @@ size_t SamplesQueue::readSamples(float* samples[], size_t num_samples, uint8_t n
   int64_t start = (_sample_id == kInvalidSampleId) ? 0 : (sample_id - _sample_id);
   if (start < 0) {
     size_t null_samples = std::min(static_cast<size_t>(-start), num_samples);
-    readNullSamples(samples, null_samples, num_channels, dst);
     dst += null_samples;
     num_samples -= null_samples;
     start += null_samples;
@@ -139,14 +145,10 @@ size_t SamplesQueue::readSamples(float* samples[], size_t num_samples, uint8_t n
   size_t good_samples = 0;
   if (num_samples > 0 && start < _size) {
     good_samples = std::min(static_cast<size_t>(_size - start), num_samples);
-    readSamples(samples, good_samples, num_channels, start, dst);
+    readSamples(samples, good_samples, num_channels, start, dst, gain);
     start += good_samples;
     dst += good_samples;
     num_samples -= good_samples;
-  }
-
-  if (num_samples > 0 && start >= _size) {
-    readNullSamples(samples, num_samples, num_channels, dst);
   }
 
 #ifdef SQ_LOG

@@ -7,12 +7,10 @@ namespace tocata {
 
 class SamplesQueue {
 public:
-  static void readNullSamples(float* samples[], size_t num_samples, uint8_t num_channels, size_t dst_index = 0);
-  
   SamplesQueue(uint32_t max_size, uint8_t channels);
   void reset();
   void addSamples(const float* interleaved, size_t num_samples, int64_t sample_id);
-  size_t readSamples(float* samples[], size_t num_samples, uint8_t num_channels, int64_t sample_id);
+  size_t readSamples(float* samples[], size_t num_samples, uint8_t num_channels, int64_t sample_id, float gain);
   int64_t firstSampleId() { return _sample_id; }
   size_t size() { return _size; }
 
@@ -25,7 +23,7 @@ private:
   void addNullSamples(size_t num_samples);
   void addSamplesWrapped(const float* interleaved, size_t num_samples);
   void setHeadAndSize(size_t num_samples);
-  void readSamples(float* samples[], size_t num_samples, uint8_t num_channels, size_t src_index, size_t dst_index);
+  void readSamples(float* samples[], size_t num_samples, uint8_t num_channels, size_t src_index, size_t dst_index, float gain);
 
   std::vector<std::vector<float>> _samples;
   size_t _head = 0;

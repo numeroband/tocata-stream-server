@@ -1,11 +1,12 @@
 const { Client } = require('pg');
 
 const remoteUrl = {
-  connectionString: process.env.DATABASE_URL || 'postgres://localhost/tocata-stream',
+  connectionString: process.env.DATABASE_URL,
   ssl: {
     rejectUnauthorized: false
   }
 };
+
 const localUrl = {
   connectionString: 'postgres://localhost/tocata-stream'
 };
@@ -21,12 +22,7 @@ class Users {
 
   async find(email) {
     const res = await this.client.query('SELECT * FROM users WHERE email = $1::text;', [email]);
-    if (res.rowCount == 0) {
-      return null;
-    }
-    const user = res.rows[0];
-    user.id = user.id.toString();
-    return user;
+    return (res.rowCount === 0) ? null : res.rows[0];
   }
 
   end() {
