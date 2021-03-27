@@ -1,0 +1,17 @@
+head
+  title Login Form
+body
+  h1 Login
+  form(method="POST" action="/login")
+    label(for="email") Email:
+    input(type="email", name="email", value=email)
+    br
+    label(for="password") Password:
+    input(type="password", name="password")
+    br
+    input(type="submit", name="submit", value="submit")
+
+  if errors
+    ul
+      for error in errors
+        li!= error.msg

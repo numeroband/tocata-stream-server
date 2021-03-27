@@ -20,9 +20,22 @@ class Users {
     this.client.connect();
   }
 
-  async find(email) {
-    const res = await this.client.query('SELECT * FROM users WHERE email = $1::text;', [email]);
+  async get(id) {
+    const res = await this.client.query('SELECT * FROM users WHERE id = $1;', [id]);
     return (res.rowCount === 0) ? null : res.rows[0];
+  }
+
+  async find(email) {
+    const res = await this.client.query('SELECT * FROM users WHERE email = $1;', [email]);
+    return (res.rowCount === 0) ? null : res.rows[0];
+  }
+
+  async update(user) {
+    const res = await user.password ? 
+      this.client.query('UPDATE users SET name = $2, email = $3, password = $4 WHERE id = $1;', 
+        [user.id, user.name, user.email, user.password]) :
+        this.client.query('UPDATE users SET name = $2, email = $3 WHERE id = $1;',
+        [user.id, user.name, user.email]);
   }
 
   end() {

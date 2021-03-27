@@ -10,6 +10,15 @@ const STATUS_CONNECTED = 0
 const STATUS_INVALID_USER = 1
 const STATUS_INVALID_PASSWORD = 2
 
+module.exports.userByEmail = email => users.find(email);
+module.exports.userById = id => users.get(id);
+module.exports.updateUser = async user => {
+  if (user.password) {
+    user.password = await bcrypt.hash(user.password, 10);
+  }
+  await users.update(user);
+}
+
 function findPeer(ws) {
   for (const [peer_id, peer] of peers.entries()) {
     if (peer.ws === ws) {
@@ -32,7 +41,7 @@ async function login(ws, msg) {
   }
 
   const match = await bcrypt.compare(password, peer.password);
-  if (false) { // (!match) {
+  if (!match) {
     const status = STATUS_INVALID_PASSWORD;
     const response = JSON.stringify({type, status});
     ws.send(response);

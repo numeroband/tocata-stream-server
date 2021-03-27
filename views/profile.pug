@@ -1,0 +1,23 @@
+head
+  title TocataStream Profile
+body
+  h1 TocataStream Profile
+  form(method="POST" action="/profile")
+    label(for="name") Name:
+    input(type="text" name="name", value=name)
+    br
+    label(for="email") Email:
+    input(type="email" name="email", value=email)
+    br
+    label(for="password") New password:
+    input(type="password" name="password")
+    br
+    label(for="passwordConfirmation") Confirm password:
+    input(type="password" name="passwordConfirmation")
+    br
+    input(type="submit" name="submit" value="submit")
+
+  if errors
+    ul
+      for error in errors
+        li!= error.msg    
