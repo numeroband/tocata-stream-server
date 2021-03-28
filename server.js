@@ -3,7 +3,7 @@ const http = require("http");
 const bcrypt = require('bcrypt');
 const express = require("express");
 const bodyParser = require("body-parser");
-const { userByEmail, userById, updateUser, leaveSession, handleMessage } = require("./session");
+const { userByEmail, userById, updateUser, pong, leaveSession, handleMessage } = require("./session");
 const session = require('express-session');
 const { body, validationResult } = require("express-validator");
 
@@ -102,4 +102,6 @@ wss.on("connection", ws => {
   console.log("websocket connection open");
   ws.on("message", msg => handleMessage(ws, JSON.parse(msg)));
   ws.on("close", _ => leaveSession(ws));
+  ws.on("pong", _ => pong(ws));
 });
+ 

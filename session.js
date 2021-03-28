@@ -10,6 +10,9 @@ const STATUS_CONNECTED = 0
 const STATUS_INVALID_USER = 1
 const STATUS_INVALID_PASSWORD = 2
 
+const PING_INTERVAL = 30 * 1000
+const PING_TIMEOUT = 5 * 1000
+
 module.exports.userByEmail = email => users.find(email);
 module.exports.userById = id => users.get(id);
 module.exports.updateUser = async user => {
@@ -51,9 +54,19 @@ async function login(ws, msg) {
   const status = STATUS_CONNECTED;
   const sender = peer.id;
   const name = peer.name;
-  peers.set(sender, {...peer, ws});
+  const peerWithWs = {...peer, ws};
+  peerWithWs.pingInterval = setInterval(_ => ping(peerWithWs), PING_INTERVAL);
+  peers.set(sender, peerWithWs);
   const response = JSON.stringify({type, sender, name, status});
   ws.send(response);
+}
+
+function ping(peer) {
+  peer.pingTimeout = setTimeout(_ => {
+    peer.ws.close();
+  }, PING_TIMEOUT);
+  console.log(`Sending ping to ${peer.name}`)
+  peer.ws.ping();
 }
 
 module.exports.handleMessage = (ws, msg) => {
@@ -87,11 +100,23 @@ module.exports.handleMessage = (ws, msg) => {
   }
 }
 
+module.exports.pong = ws => {
+  console.log('Pong received');
+  const peer = findPeer(ws);
+  if (!peer) {
+    return;
+  }
+  peer.pingTimeout && clearTimeout(peer.pingTimeout);
+  peer.pingTimeout = null;
+}
+
 module.exports.leaveSession = ws => {
   const peer = findPeer(ws);
   if (!peer) {
     return;
   }
+  peer.pingTimeout && clearTimeout(peer.pingTimeout);
+  peer.pingInterval && clearInterval(peer.pingInterval);
   const sender = peer.id;
   console.log('Disconnected', peer.name);
   peers.delete(sender);
