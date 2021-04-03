@@ -4,11 +4,14 @@ project(tocata-stream CXX C)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(OpenSSL REQUIRED)
+# find_package(OpenSSL REQUIRED)
 
 set(NO_SERVER ON CACHE INTERNAL "")
 set(NO_TESTS ON CACHE INTERNAL "")
-set(OPENSSL_USE_STATIC_LIBS TRUE CACHE INTERNAL "")
+set(OPENSSL_DIR "/Users/lorenzo/openssl/x86_install")
+# set(OPENSSL_USE_STATIC_LIBS TRUE CACHE INTERNAL "")
+
+set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
 
 add_subdirectory(libjuice)
 add_subdirectory(opus)
@@ -25,19 +28,20 @@ target_sources(tocata-stream INTERFACE
     )
   
 target_compile_definitions(tocata-stream INTERFACE 
-    TOCATA_LOCAL
+    # TOCATA_LOCAL
     ASIO_STANDALONE
     )
 
 target_include_directories(tocata-stream INTERFACE 
+    ${OPENSSL_DIR}/include
     asio/asio/include
     websocketpp
     json/include
     )
 
 target_link_libraries(tocata-stream INTERFACE 
-    OpenSSL::SSL
-    OpenSSL::Crypto
+    ${OPENSSL_DIR}/lib/libcrypto.a
+    ${OPENSSL_DIR}/lib/libssl.a
     LibJuice::LibJuiceStatic
     Opus::opus
     )
