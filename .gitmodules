@@ -1,21 +1,6 @@
-[submodule "client/asio"]
-	path = client/asio
-	url = https://github.com/chriskohlhoff/asio.git
 [submodule "client/cpp-httplib"]
 	path = client/cpp-httplib
 	url = https://github.com/yhirose/cpp-httplib.git
-[submodule "client/json"]
-	path = client/json
-	url = https://github.com/nlohmann/json.git
-[submodule "client/libjuice"]
-	path = client/libjuice
-	url = https://github.com/paullouisageneau/libjuice.git
-[submodule "client/websocketpp"]
-	path = client/websocketpp
-	url = https://github.com/zaphoyd/websocketpp.git
-[submodule "client/opus"]
-	path = client/opus
-	url = https://github.com/xiph/opus.git
 [submodule "client/opuscpp"]
 	path = client/opuscpp
 	url = https://github.com/google/opuscpp.git

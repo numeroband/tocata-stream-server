@@ -1,2 +1,0 @@
-# Tocata Stream client library
-
