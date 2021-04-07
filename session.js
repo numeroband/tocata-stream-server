@@ -6,9 +6,12 @@ const peers = new Map();
 const users = new Users();
 users.connect();
 
-const STATUS_CONNECTED = 0
+const STATUS_DISCONNECTED = 0
 const STATUS_INVALID_USER = 1
 const STATUS_INVALID_PASSWORD = 2
+const STATUS_CONNECTION_FAILED = 3
+const STATUS_CONNECTING = 4
+const STATUS_CONNECTED = 5
 
 const PING_INTERVAL = 30 * 1000
 const PING_TIMEOUT = 5 * 1000
