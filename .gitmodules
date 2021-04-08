@@ -1,6 +1,0 @@
-[submodule "client/cpp-httplib"]
-	path = client/cpp-httplib
-	url = https://github.com/yhirose/cpp-httplib.git
-[submodule "client/opuscpp"]
-	path = client/opuscpp
-	url = https://github.com/google/opuscpp.git
