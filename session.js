@@ -13,8 +13,9 @@ const STATUS_CONNECTION_FAILED = 3
 const STATUS_CONNECTING = 4
 const STATUS_CONNECTED = 5
 
-const PING_INTERVAL = 30 * 1000
+const PING_INTERVAL = 50 * 1000
 const PING_TIMEOUT = 5 * 1000
+const DISCONNECTION_TIMEOUT = 5 * 60 * 60 * 1000 // 5 hours
 
 module.exports.userByEmail = email => users.find(email);
 module.exports.userById = id => users.get(id);
@@ -62,12 +63,22 @@ async function login(ws, msg) {
   peers.set(sender, peerWithWs);
   const response = JSON.stringify({type, sender, name, status});
   ws.send(response);
+  peerWithWs.connectionMs = new Date().getTime();
+  users.updateConnection(peer.id);
 }
 
 function ping(peer) {
+  const connectedMs = new Date().getTime() - peer.connectionMs;
+  if (connectedMs > DISCONNECTION_TIMEOUT) {
+    console.log(`Disconnecting ${peer.name} connected ${connectedMs / (60 * 1000)} minutes`)
+    peer.ws.close();
+    return;
+  }
+
   peer.pingTimeout = setTimeout(_ => {
     peer.ws.close();
   }, PING_TIMEOUT);
+
   console.log(`Sending ping to ${peer.name}`)
   peer.ws.ping();
 }
@@ -128,4 +139,5 @@ module.exports.leaveSession = ws => {
   for (const p of peers.values()) {
     p.ws.send(byeMsg);
   }
+  users.updateDisconnection(peer.id);
 }

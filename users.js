@@ -31,11 +31,19 @@ class Users {
   }
 
   async update(user) {
-    const res = await user.password ? 
+    await user.password ? 
       this.client.query('UPDATE users SET name = $2, email = $3, password = $4 WHERE id = $1;', 
         [user.id, user.name, user.email, user.password]) :
         this.client.query('UPDATE users SET name = $2, email = $3 WHERE id = $1;',
         [user.id, user.name, user.email]);
+  }
+
+  updateConnection(id) {
+    return this.client.query('UPDATE users SET last_connected = current_timestamp WHERE id = $1;', [id]);
+  }
+
+  updateDisconnection(id) {
+    return this.client.query('UPDATE users SET last_disconnected = current_timestamp WHERE id = $1;', [id]);
   }
 
   end() {
