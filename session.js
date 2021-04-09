@@ -37,10 +37,11 @@ function findPeer(ws) {
 
 async function login(ws, msg) {
   const {type, username, password} = msg;
-  console.log('Login from', username,);
+  console.log('Login from', username);
   
   const peer = await users.find(username);
   if (!peer) {
+    console.log('Invalid username', username);
     const status = STATUS_INVALID_USER;
     const response = JSON.stringify({type, status});
     ws.send(response);
@@ -49,6 +50,7 @@ async function login(ws, msg) {
 
   const match = await bcrypt.compare(password, peer.password);
   if (!match) {
+    console.log('Invalid password', password);
     const status = STATUS_INVALID_PASSWORD;
     const response = JSON.stringify({type, status});
     ws.send(response);
