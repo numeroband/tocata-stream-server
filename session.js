@@ -41,7 +41,7 @@ async function login(ws, msg) {
   
   const peer = await users.find(username);
   if (!peer) {
-    console.log('Invalid username', username);
+    console.log(`Invalid username: '${username}'`);
     const status = STATUS_INVALID_USER;
     const response = JSON.stringify({type, status});
     ws.send(response);
@@ -50,7 +50,7 @@ async function login(ws, msg) {
 
   const match = await bcrypt.compare(password, peer.password);
   if (!match) {
-    console.log('Invalid password', password);
+    console.log(`Invalid password for username '${username}'`);
     const status = STATUS_INVALID_PASSWORD;
     const response = JSON.stringify({type, status});
     ws.send(response);
