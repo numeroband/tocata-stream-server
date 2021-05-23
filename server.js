@@ -19,6 +19,7 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({     // to support URL-encoded bodies
   extended: true
 }));
+app.use(express.static('static'));
 
 // Se indica el directorio donde se almacenarán las plantillas 
 app.set('views', './views');
@@ -100,7 +101,7 @@ console.log("websocket server created")
 
 wss.on("connection", ws => {
   console.log("websocket connection open");
-  ws.on("message", msg => handleMessage(ws, JSON.parse(msg)));
+  ws.on("message", msg => handleMessage(ws, msg));
   ws.on("close", _ => leaveSession(ws));
   ws.on("pong", _ => pong(ws));
 });
