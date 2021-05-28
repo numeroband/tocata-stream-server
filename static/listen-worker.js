@@ -1,10 +1,8 @@
-importScripts('opus-stream-decoder.js');
+importScripts('opus-decoder.js');
 
 class Connection {
   constructor() {
-    this.decoder = new OpusStreamDecoder({onDecode: this.onDecode.bind(this)});
     this.socket = null;
-    this.flushSize = 24000;
     this.numSamples = 0;
     this.buffers = [new Float32Array(this.flushSize), new Float32Array(this.flushSize)]
   }
@@ -30,11 +28,13 @@ class Connection {
 
   async onMessage(event) {
     if (typeof(event.data) === 'string') {
-      console.log('Received', event.data);
     } else {
-      await this.decoder.ready;
       const array = new Uint8Array(await event.data.arrayBuffer());
-      this.decoder.decode(array);
+      if (!this.decoder) {
+        console.log('Creating decoder');
+        this.decoder = new OpusDecoder();
+      }
+      this.decoder.decode(array, this.onDecode.bind(this));
     }  
   }
 
@@ -49,19 +49,9 @@ class Connection {
     this.socket = null;
   }
 
-  onDecode({left, right, samplesDecoded, sampleRate}) {
-    let processed = 0;
-    while (processed < samplesDecoded) {
-      const samplesToCopy = Math.min(samplesDecoded - processed, this.flushSize - this.numSamples);
-      this.buffers[0].set(left.slice(processed, processed + samplesToCopy), this.numSamples);
-      this.buffers[1].set(right.slice(processed, processed + samplesToCopy), this.numSamples);
-      processed += samplesToCopy;
-      this.numSamples += samplesToCopy;
-      if (this.numSamples == this.flushSize) {
-        postMessage({type: 'Samples', samples: this.buffers});
-        this.numSamples = 0;        
-      }
-    }
+  onDecode(left, right) {
+    // console.log('samples decoded', left.length, right.length);
+    postMessage({type: 'Samples', samples: [left, right]});
   }
 }
 

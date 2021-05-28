@@ -1,4 +1,4 @@
-const MAX_SOURCES = 4;
+const MAX_SOURCES = 8;
 
 class AudioPlayer {
   constructor(audioCtx) {
@@ -7,14 +7,16 @@ class AudioPlayer {
     this.worker.onmessage = e => this.onMessage(e);
     this.audioCtx = audioCtx;
     this.nextSchedule = 0;
-    this.pendingSources = [];
+    this.firstSource = null;
     this.playing = false;
   }
 
   play() {
+    console.log('Start playback');
     this.playing = true;
-    this.nextSchedule = this.audioCtx.currentTime + (100 / 1000);
-    this.schedule();
+    this.audioCtx.resume();
+    this.schedule(this.firstSource);
+    this.firstSource = null;
   }
 
   connect(url) {
@@ -45,21 +47,20 @@ class AudioPlayer {
         nowBuffering[i] = samples[i];
       }
     }
-    this.pendingSources.push(bufferSource);
-    if (!this.playing && this.pendingSources.length > MAX_SOURCES) {
-      this.pendingSources.shift();
+    if (this.playing) {
+      this.schedule(bufferSource);
+    } else {
+      this.firstSource = bufferSource;
     }
-    console.log(`queued ${numSamples} samples (queue size ${this.pendingSources.length})`);
   }
 
-  schedule() {
-    console.log(`scheduling ${this.pendingSources.length} starting ${this.nextSchedule}`);
-    while (this.pendingSources.length > 0) {
-      const source = this.pendingSources.shift();
-      source.onended = () => this.schedule();
-      source.start(this.nextSchedule);
-      this.nextSchedule += source.buffer.duration;
+  schedule(source) {
+    if (!this.nextSchedule) {
+      this.nextSchedule = this.audioCtx.currentTime + 1.1;
     }
+    // console.log(`scheduling at ${this.audioCtx.currentTime} starting ${this.nextSchedule}`);
+    source.start(this.nextSchedule);
+    this.nextSchedule += source.buffer.duration;
   }
 
   onMessage(e) {
@@ -74,8 +75,7 @@ class AudioPlayer {
 }
 
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)({
-  latencyHint: 'interactive',
-  sampleRate: 48000,
+  latencyHint: 'interactive'
 });
 const player = new AudioPlayer(audioCtx);
 player.connect(new URL(window.location));
