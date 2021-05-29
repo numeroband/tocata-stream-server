@@ -38,15 +38,12 @@ function findPeer(ws) {
   return null;
 }
 
-function findSession(username) {
+function cleanupSessions() {
   const now = new Date().getTime();
   const toDelete = [];
-  let foundSession = null;
   for (const [sessionId, session] of sessions.entries()) {
     if ((now - session.lastMessageMs) > SESSION_TIMEOUT) {
       toDelete.push(session);
-    } else if (!foundSession || (foundSession.lastMessageMs < session.lastMessageMs)) {
-      foundSession = session;
     }
   }
   // TODO: Update db timestamp
@@ -55,6 +52,17 @@ function findSession(username) {
     session.listeners.forEach(ws => ws.close())
     sessions.delete(session.id)
   });
+}
+
+function findSession(username) {
+  cleanupSessions();
+  const now = new Date().getTime();
+  let foundSession = null;
+  for (const [sessionId, session] of sessions.entries()) {
+    if (!foundSession || (foundSession.lastMessageMs < session.lastMessageMs)) {
+      foundSession = session;
+    }
+  }
 
   if (foundSession) {
     foundSession.lastMessageMs = now;
@@ -112,6 +120,7 @@ async function login(ws, msg) {
 }
 
 function listen(ws, msg) {
+  cleanupSessions();
   const session = sessions.get(msg.sessionId);
   if (!session) {
     ws.close();
