@@ -38,6 +38,11 @@ class Users {
         [user.id, user.name, user.email]);
   }
 
+  async getStreams(userId) {
+    const res = await this.client.query('SELECT * FROM streams WHERE user_id = $1;', [userId]);
+    return res.rows;
+  }
+
   updateConnection(id) {
     return this.client.query('UPDATE users SET last_connected = current_timestamp WHERE id = $1;', [id]);
   }

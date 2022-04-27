@@ -105,6 +105,8 @@ async function login(ws, msg) {
     return;
   }
 
+  const streams = await users.getStreams(peer.id);
+
   const status = STATUS_CONNECTED;
   const session = findSession(username);
   const sessionId = session.id;
@@ -113,7 +115,7 @@ async function login(ws, msg) {
   const peerWithWs = {...peer, ws, session};
   peerWithWs.pingInterval = setInterval(_ => ping(peerWithWs), PING_INTERVAL);
   peers.set(sender, peerWithWs);
-  const response = JSON.stringify({type, sender, name, status, sessionId});
+  const response = JSON.stringify({type, sender, name, status, sessionId, streams});
   ws.send(response);
   peerWithWs.connectionMs = new Date().getTime();
   users.updateConnection(peer.id);
