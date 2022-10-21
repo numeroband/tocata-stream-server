@@ -7,7 +7,7 @@ const { userByEmail, userById, updateUser, pong, leaveSession, handleMessage } =
 const session = require('express-session');
 const { body, validationResult } = require("express-validator");
 
-const port = process.env.PORT || 5555
+const port = process.env.PORT || 3000
 const app = express();
 
 app.use(session({

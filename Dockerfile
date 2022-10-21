@@ -1,9 +1,19 @@
-FROM node:14-alpine
+FROM node:16-alpine
 
-WORKDIR /src
-COPY package.json package-lock.json /src/
-RUN npm install --production
+# Create app directory
+WORKDIR /usr/src/app
 
-COPY . /src
+# Install app dependencies
+# A wildcard is used to ensure both package.json AND package-lock.json are copied
+# where available (npm@5+)
+COPY package*.json ./
 
-CMD ["npm", "start"]
+RUN npm install
+# If you are building your code for production
+# RUN npm ci --only=production
+
+# Bundle app source
+COPY . .
+
+EXPOSE 3000
+CMD [ "npm", "start" ]
