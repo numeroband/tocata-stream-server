@@ -2,9 +2,7 @@ const { Client } = require('pg');
 
 const remoteUrl = {
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: false
 };
 
 const localUrl = {
