@@ -1,3 +1,5 @@
 node_modules
 npm-debug.log
 .github
+docker-compose
+install-docker.sh
