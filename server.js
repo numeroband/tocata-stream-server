@@ -1,5 +1,7 @@
 const WebSocketServer = require("ws").Server;
+const fs = require("fs");
 const http = require("http");
+const https = require("https");
 const bcrypt = require('bcrypt');
 const express = require("express");
 const bodyParser = require("body-parser");
@@ -9,6 +11,7 @@ const { body, validationResult } = require("express-validator");
 
 const port = process.env.PORT || 3000
 const app = express();
+const certs = process.env.CERTS_DIR;
 
 app.use(session({
   secret: 'no one knows',
@@ -91,10 +94,16 @@ app.post('/profile',
     return res.redirect('/profile');
   },  
 )
-const server = http.createServer(app)
+const config = (certs ? {
+  key: fs.readFileSync(certs + '/key.pem'),
+  cert: fs.readFileSync(certs + '/cert.pem'),
+} : null)
+const server = (config ? 
+  https.createServer(config, app) :
+  http.createServer(app))
 server.listen(port)
 
-console.log("http server listening on %d", port)
+console.log(`http${config ? 's' : ''} server listening on ${port}`)
 
 const wss = new WebSocketServer({ server })
 console.log("websocket server created")
