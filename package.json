@@ -8,11 +8,14 @@
     "express-validator": "^6.10.0",
     "pg": "^8.5.1",
     "pug": "^3.0.2",
+    "serve-index": "^1.9.1",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7",
     "uuid": "^8.3.2",
     "ws": "^7.4.3"
   },
   "engines": {
-    "node": "16.x"
+    "node": "20.x"
   },
   "scripts": {
     "start": "node server.js"

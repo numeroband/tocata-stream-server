@@ -1,4 +1,6 @@
 const { Client } = require('pg');
+const sqlite3 = require('sqlite3');
+const { open } = require('sqlite');
 
 const remoteUrl = {
   connectionString: process.env.DATABASE_URL,
@@ -14,7 +16,7 @@ class Users {
     this.client = new Client(process.env.DATABASE_URL ? remoteUrl : localUrl);    
   }
 
-  connect() {
+  async connect() {
     this.client.connect();
   }
 
@@ -54,4 +56,63 @@ class Users {
   }
 };
 
+class UsersLite {
+  constructor() {
+    this.db = null
+  }
+
+  async connect() {
+    if (this.db) { return }
+    this.db = await open({
+      filename: 'storage/db/tocata.db',
+      driver: sqlite3.Database
+    })
+  }
+
+  async get(id) {
+    await this.connect()
+    return this.db.get('SELECT * FROM users WHERE id = ?', id)
+  }
+
+  async find(email) {
+    await this.connect()
+    return this.db.get('SELECT * FROM users WHERE email = ?', email)
+  }
+
+  async update(user) {
+    await this.connect()
+    const values = {
+      ':name': user.name,
+      ':email': user.email,
+      ':password' : user.password,
+      ':id' : user.id,
+    }
+    await user.password ? 
+      this.db.run('UPDATE users SET name = :name, email = :email, password = :password WHERE id = :id', values) :
+        this.db.run('UPDATE users SET name = :name, email = :email WHERE id = :id', values);
+  }
+
+  async getStreams(userId) {
+    await this.connect()
+    return this.db.all('SELECT * FROM streams WHERE user_id = ?', userId);
+  }
+
+  async updateConnection(id) {
+    await this.connect()
+    return this.db.run('UPDATE users SET last_connected = current_timestamp WHERE id = ?', id);
+  }
+
+  async updateDisconnection(id) {
+    await this.connect()
+    return this.db.run('UPDATE users SET last_disconnected = current_timestamp WHERE id = ?', id);
+  }
+
+  async end() {
+    const db = this.db;
+    this.db = null;
+    await db.close();
+  }
+};
+
 module.exports.Users = Users;
+module.exports.UsersLite = UsersLite;

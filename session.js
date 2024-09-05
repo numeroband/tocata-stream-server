@@ -1,11 +1,11 @@
 const bcrypt = require('bcrypt');
 
-const {Users} = require('./users');
+const {Users, UsersLite} = require('./users');
 const { v4: uuidv4 } = require('uuid');
 
 const peers = new Map();
 const sessions = new Map();
-const users = new Users();
+const users = new UsersLite();
 users.connect();
 
 const STATUS_DISCONNECTED = 0

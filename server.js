@@ -8,6 +8,7 @@ const bodyParser = require("body-parser");
 const { userByEmail, userById, updateUser, pong, leaveSession, handleMessage } = require("./session");
 const session = require('express-session');
 const { body, validationResult } = require("express-validator");
+const serveIndex = require('serve-index')
 
 const port = process.env.PORT || 3000
 const app = express();
@@ -94,6 +95,9 @@ app.post('/profile',
     return res.redirect('/profile');
   },  
 )
+
+app.use('/downloads', [auth, express.static('storage/downloads')], serveIndex('storage/downloads'))
+
 const config = (certs ? {
   key: fs.readFileSync(certs + '/key.pem'),
   cert: fs.readFileSync(certs + '/cert.pem'),
