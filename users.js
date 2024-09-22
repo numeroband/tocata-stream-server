@@ -16,7 +16,7 @@ class Users {
     this.client = new Client(process.env.DATABASE_URL ? remoteUrl : localUrl);    
   }
 
-  async connect() {
+  connect() {
     this.client.connect();
   }
 
