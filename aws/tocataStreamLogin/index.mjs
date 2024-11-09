@@ -22,8 +22,6 @@ const dynamo = DynamoDBDocumentClient.from(client);
 
 const login = async (request) => {
   const {type, username, password} = request;
-  console.log('Login from', username);
-
   const name = '';
   const streams = [];
   const status = STATUS_CONNECTED;
@@ -38,7 +36,9 @@ const login = async (request) => {
 
   let user = null;
   try {
+    console.log('Searching user', username);
     const dbResponse = await dynamo.send(command);
+    console.log('User searched');
     user = dbResponse.Item;
     console.log(user);
   } catch(error) {
