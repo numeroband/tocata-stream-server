@@ -54,7 +54,10 @@ export const handler = async (event) => {
   }
 
   const type = 'Bye';
-  const response = JSON.stringify({type, sender});
+  // The same `connection` the route lambda tags this login's messages with:
+  // this Bye can land after the user's next login's Hello, and peers use it
+  // to tell the two apart.
+  const response = JSON.stringify({type, sender, connection: connectionId});
   const promises = [];
   for (const connection of connections) {
     if (connection.connectionId == connectionId) {

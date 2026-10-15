@@ -49,11 +49,16 @@ export const handler = async (event) => {
       console.error(error);
       return {statusCode: 500};
     }
+    // Not logged in: nothing to relay.
+    return {statusCode: 200};
   }
 
   const request = JSON.parse(event.body);
   const {dst} = request;
-  const response = JSON.stringify({sender, ...request});
+  // The server's fields go last so a client cannot spoof them. `connection`
+  // names the sender's login: `sender` is its user id, the same across
+  // logins, so without it a peer cannot tell which login a Bye is for.
+  const response = JSON.stringify({...request, sender, connection: connectionId});
   const promises = [];
   for (const connection of connections) {
     if (connection.connectionId == connectionId || (dst && connection.userId != dst)) {
